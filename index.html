@@ -369,6 +369,40 @@ body {
 .info-label { width: 80px; color: var(--text-muted); flex-shrink: 0; }
 .info-value { flex: 1; word-break: break-all; }
 
+
+/* ── Settings Modal ────────────────────────────────────── */
+#modal-settings .modal-box { max-width: 360px; }
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-label { color: var(--text); }
+.settings-btn {
+  padding: 5px 14px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: transparent; color: var(--text); cursor: pointer; font-family: inherit; font-size: 12.5px;
+}
+.settings-btn:hover { background: var(--bg-hover); }
+.settings-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.settings-btn.danger { border-color: var(--danger); color: var(--danger); }
+.settings-btn.danger:hover { background: var(--danger-dim); }
+
+/* ── Trash Modal ───────────────────────────────────────── */
+#modal-trash .modal-box { max-width: 480px; }
+#trash-list { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); margin: 8px 0; }
+.trash-group { border-bottom: 1px solid var(--border); }
+.trash-group:last-child { border-bottom: none; }
+.trash-group-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px; font-size: 11.5px; color: var(--text-muted); background: var(--bg);
+}
+.trash-group-header button {
+  padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px;
+  background: transparent; color: var(--accent); cursor: pointer; font-family: inherit; font-size: 11px;
+}
+.trash-group-header button:hover { background: var(--accent-dim); }
+.trash-item { padding: 4px 10px 4px 20px; font-size: 12px; color: var(--text); }
+.trash-empty { padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
 /* ── Responsive ────────────────────────────────────────── */
 @media (display-mode: standalone) {
   #toolbar { padding-top: env(safe-area-inset-top); height: calc(var(--toolbar-h) + env(safe-area-inset-top)); }
@@ -406,9 +440,9 @@ body {
     <div class="tb-spacer"></div>
     <button class="tb-btn" id="btn-select-all" title="全選択">☑</button>
     <button class="tb-btn" id="btn-undo" title="元に戻す" style="display:none">↩</button>
-    <button class="tb-btn" id="btn-theme" title="テーマ切替">◑</button>
+    <button class="tb-btn" id="btn-trash" title="ゴミ箱">🗑</button>
     <button class="tb-btn" id="btn-refresh" title="更新">⟳</button>
-    <button class="tb-btn" id="btn-disconnect" title="切断">⏻</button>
+    <button class="tb-btn" id="btn-settings" title="設定">⚙</button>
   </div>
   <div id="body">
     <div id="sidebar">
@@ -455,6 +489,22 @@ body {
   <div class="modal-actions"><button class="modal-btn cancel" id="info-close">閉じる</button></div>
 </div></div>
 
+
+<div class="modal-overlay" id="modal-settings"><div class="modal-box">
+  <h3>設定</h3>
+  <div class="settings-row"><span class="settings-label">テーマ</span><button class="settings-btn" id="set-theme">◑ ダーク</button></div>
+  <div class="settings-row"><span class="settings-label">Dropbox</span><button class="settings-btn danger" id="set-disconnect">切断</button></div>
+  <div class="modal-actions"><button class="modal-btn cancel" id="settings-close">閉じる</button></div>
+</div></div>
+
+<div class="modal-overlay" id="modal-trash"><div class="modal-box wide">
+  <h3>ゴミ箱</h3>
+  <div id="trash-list"></div>
+  <div class="modal-actions">
+    <button class="modal-btn cancel" id="trash-empty-all" style="margin-right:auto;color:var(--danger)">すべて完全削除</button>
+    <button class="modal-btn cancel" id="trash-close">閉じる</button>
+  </div>
+</div></div>
 <div id="toast"></div>
 <div id="lasso"></div>
 
@@ -671,7 +721,7 @@ async function loadFolder(path) {
   try {
     const entries = await App.storage.list(path || '');
     if (gen !== App.navGen) return;
-    App.entries = sortEntries(entries);
+    App.entries = sortEntries(entries.filter(e => e.name !== '.filer-trash'));
     App.entries = applyCustomOrder(App.entries);
     App.selected.clear(); updateSelBadge();
     renderGrid(gen);
@@ -1059,7 +1109,7 @@ async function buildPickerNode(path, label, depth, expanded) {
   if (expanded) {
     try {
       const entries = await App.storage.list(path || '');
-      const folders = entries.filter(e => e['.tag'] === 'folder').sort((a,b) => naturalCmp(a.name, b.name));
+      const folders = entries.filter(e => e['.tag'] === 'folder' && e.name !== '.filer-trash').sort((a,b) => naturalCmp(a.name, b.name));
       children = folders.map(f => {
         const rel = entryRelPath(f);
         return `<div class="tree-node" data-path="${rel}">
@@ -1102,7 +1152,7 @@ function setupPickerEvents(container) {
           childrenEl.innerHTML = '<div style="padding:4px 20px;color:var(--text-muted);font-size:11px">...</div>';
           try {
             const entries = await App.storage.list(path || '');
-            const folders = entries.filter(e => e['.tag'] === 'folder').sort((a,b) => naturalCmp(a.name, b.name));
+            const folders = entries.filter(e => e['.tag'] === 'folder' && e.name !== '.filer-trash').sort((a,b) => naturalCmp(a.name, b.name));
             const depth = path.split('/').length;
             childrenEl.innerHTML = folders.map(f => {
               const rel = entryRelPath(f);
@@ -1199,7 +1249,7 @@ async function loadTree() {
     container.appendChild(root);
 
     const entries = await App.storage.list('');
-    const folders = entries.filter(e => e['.tag'] === 'folder').sort((a,b) => naturalCmp(a.name, b.name));
+    const folders = entries.filter(e => e['.tag'] === 'folder' && e.name !== '.filer-trash').sort((a,b) => naturalCmp(a.name, b.name));
     const childrenEl = root.querySelector('.tree-children');
     childrenEl.innerHTML = folders.map(f => {
       const rel = entryRelPath(f);
@@ -1268,6 +1318,77 @@ async function executeBatchRename() {
   loadFolder(App.currentPath);
 }
 // (undo functions moved to Undo Stack section above)
+
+
+// ── Trash Viewer ──
+async function openTrash() {
+  const list = $('#trash-list');
+  list.innerHTML = '<div class="trash-empty">読み込み中...</div>';
+  $('#modal-trash').classList.add('show');
+  try {
+    const entries = await App.storage.list('.filer-trash');
+    const groups = entries.filter(e => e['.tag'] === 'folder').sort((a,b) => b.name.localeCompare(a.name));
+    if (!groups.length) { list.innerHTML = '<div class="trash-empty">ゴミ箱は空です</div>'; return; }
+    let html = '';
+    for (const g of groups) {
+      const items = await App.storage.list(entryRelPath(g));
+      const ts = g.name.replace(/T/, ' ').replace(/-/g, (m, off) => off > 9 ? ':' : '-');
+      html += '<div class="trash-group">';
+      html += `<div class="trash-group-header"><span>${ts}</span><button data-restore="${entryRelPath(g)}">すべて復元</button></div>`;
+      for (const it of items) {
+        html += `<div class="trash-item">${it['.tag'] === 'folder' ? '📁' : '📄'} ${it.name}</div>`;
+      }
+      html += '</div>';
+    }
+    list.innerHTML = html;
+  } catch(_) {
+    list.innerHTML = '<div class="trash-empty">ゴミ箱は空です</div>';
+  }
+}
+
+async function restoreTrashGroup(groupPath) {
+  toast('復元中...');
+  try {
+    const items = await App.storage.list(groupPath);
+    let ok = 0, fail = 0;
+    for (const it of items) {
+      const fromRel = entryRelPath(it);
+      // Find the original undo op in the stack
+      let origPath = null;
+      for (const op of App.undoStack) {
+        for (const mv of op.ops) {
+          if (mv.from === fromRel) { origPath = mv.to; break; }
+        }
+        if (origPath) break;
+      }
+      if (!origPath) origPath = it.name; // fallback: restore to root
+      try { await App.storage.move(fromRel, origPath); ok++; } catch(_) { fail++; }
+    }
+    // Try to delete the now-empty group folder
+    try { await App.storage.delete(groupPath); } catch(_) {}
+    toast(fail ? `${ok}件復元（${fail}件エラー）` : `${ok}件復元しました`);
+    openTrash(); loadFolder(App.currentPath); loadTree();
+  } catch(e) { toast('復元エラー: ' + e.message); }
+}
+
+async function emptyTrash() {
+  if (!confirm('ゴミ箱を完全に空にしますか？\nこの操作は元に戻せません。')) return;
+  toast('削除中...');
+  try {
+    await App.storage.delete('.filer-trash');
+    App.undoStack = App.undoStack.filter(op => op.type !== 'delete');
+    updateUndoBtn();
+    toast('ゴミ箱を空にしました');
+    openTrash();
+  } catch(e) { toast('エラー: ' + e.message); }
+}
+
+function updateSettingsThemeBtn() {
+  const btn = $('#set-theme');
+  const isDark = document.documentElement.dataset.theme !== 'light';
+  btn.textContent = isDark ? '◑ ダーク' : '☀ ライト';
+  btn.classList.toggle('active', !isDark);
+}
 
 // ── D&D Reorder (always-on for files) ──
 let dragSrcIdx = null;
@@ -1491,16 +1612,28 @@ function setupEvents() {
   $('#btn-forward').onclick = () => history.forward();
   $('#btn-up').onclick = () => { if (App.currentPath) navigate(parentPath(App.currentPath)); };
   $('#btn-refresh').onclick = () => loadFolder(App.currentPath);
-  $('#btn-disconnect').onclick = () => App.storage.disconnect();
-  $('#btn-sidebar').onclick = () => { const sb = $('#sidebar'), mob = innerWidth <= 700; if (mob) sb.classList.toggle('mobile-open'); else { sb.classList.toggle('hidden'); saveSetting('sidebarHidden', sb.classList.contains('hidden')); } };
-  $('#btn-select-all').onclick = selectAll;
-  $('#btn-undo').onclick = undoLast;
-  $('#btn-theme').onclick = () => {
+  $('#btn-trash').onclick = openTrash;
+  $('#btn-settings').onclick = () => { updateSettingsThemeBtn(); $('#modal-settings').classList.add('show'); };
+  $('#settings-close').onclick = () => $('#modal-settings').classList.remove('show');
+  $('#set-theme').onclick = () => {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
     localStorage.setItem('dbxfiler_theme', next);
     document.querySelector('meta[name="theme-color"]').content = next === 'dark' ? '#111114' : '#f5f5f7';
+    updateSettingsThemeBtn();
   };
+  $('#set-disconnect').onclick = () => { if (confirm('Dropboxから切断しますか？')) { App.storage.disconnect(); $('#modal-settings').classList.remove('show'); } };
+  $('#trash-close').onclick = () => $('#modal-trash').classList.remove('show');
+  $('#trash-empty-all').onclick = emptyTrash;
+  $('#trash-list').addEventListener('click', e => {
+    const btn = e.target.closest('[data-restore]');
+    if (btn) restoreTrashGroup(btn.dataset.restore);
+  });
+
+  $('#btn-sidebar').onclick = () => { const sb = $('#sidebar'), mob = innerWidth <= 700; if (mob) sb.classList.toggle('mobile-open'); else { sb.classList.toggle('hidden'); saveSetting('sidebarHidden', sb.classList.contains('hidden')); } };
+  $('#btn-select-all').onclick = selectAll;
+  $('#btn-undo').onclick = undoLast;
+
 
   $('#breadcrumb').addEventListener('click', e => { const item = e.target.closest('.bc-item'); if (item && !item.classList.contains('current')) navigate(item.dataset.path); });
   $('#sort-select').onchange = e => { App.sortMode = e.target.value; saveSetting('sortMode', App.sortMode); if (App.customOrders) { delete App.customOrders[customOrderKey()]; saveSetting('customOrders', App.customOrders); } App.entries = sortEntries(App.entries); renderGrid(App.navGen); };
@@ -1647,7 +1780,7 @@ function setupEvents() {
           childrenEl.innerHTML = '<div style="padding:4px 20px;color:var(--text-muted);font-size:11px">...</div>';
           try {
             const entries = await App.storage.list(path || '');
-            const folders = entries.filter(e => e['.tag'] === 'folder').sort((a,b) => naturalCmp(a.name, b.name));
+            const folders = entries.filter(e => e['.tag'] === 'folder' && e.name !== '.filer-trash').sort((a,b) => naturalCmp(a.name, b.name));
             const depth = path ? path.split('/').length : 0;
             childrenEl.innerHTML = folders.map(f => {
               const rel = entryRelPath(f);
