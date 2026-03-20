@@ -347,6 +347,7 @@ body {
 }
 .tree-row:hover { background: var(--bg-hover); }
 .tree-row.active { background: var(--accent-dim); color: var(--accent); }
+.tree-row.drop-target { background: var(--accent-dim); outline: 1.5px dashed var(--accent); outline-offset: -1.5px; }
 .tree-toggle { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-muted); flex-shrink: 0; transition: transform 0.15s; }
 .tree-toggle.open { transform: rotate(90deg); }
 .tree-toggle.empty { visibility: hidden; }
@@ -705,7 +706,7 @@ function renderGrid(gen) {
   if (!entries.length) { grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">📂</div><div>空のフォルダ</div></div>'; return; }
   grid.innerHTML = entries.map((entry, idx) => {
     const isF = entry['.tag'] === 'folder', e = ext(entry.name), sel = App.selected.has(idx);
-    const draggable = !isF ? ' draggable="true"' : '';
+    const draggable = ' draggable="true"';
     return `<div class="grid-item${sel ? ' selected' : ''}" data-index="${idx}" data-tag="${entry['.tag']}"${draggable}>
       <div class="grid-check" data-check="${idx}">${sel ? '✓' : ''}</div>
       <div class="grid-thumb" id="thumb-${idx}">${isF ? '<span class="folder-icon">📁</span>' : (THUMB_EXT.has(e) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">📄</span>')}</div>
@@ -823,8 +824,10 @@ function showCtx(x, y, entry, multi) {
     h += '<div class="ctx-item" data-action="rename"><span class="ctx-icon">✏</span>名前の変更</div>';
     h += '<div class="ctx-item" data-action="move"><span class="ctx-icon">📦</span>移動</div>';
     h += '<div class="ctx-item" data-action="copy"><span class="ctx-icon">📋</span>コピー</div>';
-    if (!isF) h += '<div class="ctx-item" data-action="download"><span class="ctx-icon">⬇</span>ダウンロード</div>';
-    h += '<div class="ctx-item" data-action="info"><span class="ctx-icon">ℹ</span>情報</div>';
+    if (!isF) {
+      h += '<div class="ctx-item" data-action="download"><span class="ctx-icon">⬇</span>ダウンロード</div>';
+      h += '<div class="ctx-item" data-action="info"><span class="ctx-icon">ℹ</span>情報</div>';
+    }
     h += '<div class="ctx-sep"></div>';
     h += '<div class="ctx-item danger" data-action="delete"><span class="ctx-icon">🗑</span>削除</div>';
   }
@@ -835,6 +838,22 @@ function showCtxEmpty(x, y) {
   const m = $('#ctx-menu');
   m.innerHTML = '<div class="ctx-item" data-action="new-folder"><span class="ctx-icon">📁</span>新規フォルダ</div>';
   m.style.left = Math.min(x, innerWidth - 200) + 'px'; m.style.top = Math.min(y, innerHeight - 200) + 'px'; m.classList.add('show');
+}
+function showCtxTree(x, y, path) {
+  ctxTarget = { _treePath: path }; ctxIsMulti = false;
+  const m = $('#ctx-menu');
+  const name = path ? baseName(path) : 'Dropbox';
+  let h = '';
+  h += `<div class="ctx-item" style="color:var(--text-muted);pointer-events:none;font-size:11.5px">${name}</div><div class="ctx-sep"></div>`;
+  h += '<div class="ctx-item" data-action="tree-open"><span class="ctx-icon">📂</span>開く</div>';
+  h += '<div class="ctx-item" data-action="tree-fav"><span class="ctx-icon">⭐</span>お気に入りに追加</div>';
+  h += '<div class="ctx-item" data-action="tree-new-folder"><span class="ctx-icon">📁</span>新規フォルダ（中に）</div>';
+  h += '<div class="ctx-sep"></div>';
+  if (path) {
+    h += '<div class="ctx-item" data-action="tree-rename"><span class="ctx-icon">✏</span>名前の変更</div>';
+    h += '<div class="ctx-item danger" data-action="tree-delete"><span class="ctx-icon">🗑</span>削除</div>';
+  }
+  m.innerHTML = h; m.style.left = Math.min(x, innerWidth - 200) + 'px'; m.style.top = Math.min(y, innerHeight - 200) + 'px'; m.classList.add('show');
 }
 function hideCtx() { $('#ctx-menu').classList.remove('show'); ctxTarget = null; ctxIsMulti = false; }
 
@@ -854,6 +873,32 @@ async function doCtx(action) {
   else if (action === 'download') await downloadEntry(entry);
   else if (action === 'info') showInfo(entry);
   else if (action === 'new-folder') await createNewFolder();
+  else if (action.startsWith('tree-')) await doCtxTree(action, entry);
+}
+
+async function doCtxTree(action, target) {
+  const path = target?._treePath ?? '';
+  if (action === 'tree-open') navigate(path);
+  else if (action === 'tree-fav') addFavorite(path);
+  else if (action === 'tree-new-folder') {
+    const name = prompt('新しいフォルダ名:');
+    if (!name?.trim()) return;
+    const rel = path ? path + '/' + name.trim() : name.trim();
+    try { await App.storage.createFolder(rel); toast('フォルダを作成しました'); loadTree(); if (App.currentPath === path) loadFolder(path); } catch(e) { toast('エラー: ' + e.message); }
+  }
+  else if (action === 'tree-rename') {
+    const oldName = baseName(path);
+    const newName = prompt('新しい名前:', oldName);
+    if (!newName?.trim() || newName.trim() === oldName) return;
+    const parent = parentPath(path);
+    const newRel = parent ? parent + '/' + newName.trim() : newName.trim();
+    try { await App.storage.move(path, newRel); toast('名前を変更しました'); loadTree(); if (App.currentPath === path) navigate(newRel, true); else if (App.currentPath.startsWith(path + '/')) navigate(App.currentPath.replace(path, newRel), true); else loadFolder(App.currentPath); } catch(e) { toast('エラー: ' + e.message); }
+  }
+  else if (action === 'tree-delete') {
+    const name = baseName(path);
+    if (!confirm(`フォルダ「${name}」を削除しますか？`)) return;
+    try { await App.storage.delete(path); toast('削除しました'); loadTree(); if (App.currentPath === path || App.currentPath.startsWith(path + '/')) navigate(parentPath(path)); else loadFolder(App.currentPath); } catch(e) { toast('削除エラー: ' + e.message); }
+  }
 }
 
 function selectedEntries() {
@@ -1160,14 +1205,13 @@ let dragSrcIdx = null;
 function initDragReorder() {
   const grid = $('#grid');
   grid.addEventListener('dragstart', e => {
-    const item = e.target.closest('.grid-item[data-tag="file"]'); if (!item) { e.preventDefault(); return; }
+    const item = e.target.closest('.grid-item'); if (!item) { e.preventDefault(); return; }
     dragSrcIdx = parseInt(item.dataset.index);
-    // If dragging a selected item, drag all selected; otherwise just this one
     if (!App.selected.has(dragSrcIdx)) { App.selected.clear(); App.selected.add(dragSrcIdx); updateSelectionUI(); }
     item.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', '');
   });
-  grid.addEventListener('dragend', e => { document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after')); dragSrcIdx = null; });
+  grid.addEventListener('dragend', e => { document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target')); dragSrcIdx = null; });
   grid.addEventListener('dragover', e => {
     if (dragSrcIdx === null) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move';
     const item = e.target.closest('.grid-item[data-tag="file"]'); if (!item) return;
@@ -1187,7 +1231,7 @@ function initDragReorder() {
   // Touch D&D
   let tSrc = null, tClone = null, tLP = null;
   grid.addEventListener('touchstart', e => {
-    const item = e.target.closest('.grid-item[data-tag="file"]'); if (!item) return;
+    const item = e.target.closest('.grid-item'); if (!item) return;
     tLP = setTimeout(() => {
       tSrc = parseInt(item.dataset.index);
       if (!App.selected.has(tSrc)) { App.selected.clear(); App.selected.add(tSrc); updateSelectionUI(); }
@@ -1200,18 +1244,46 @@ function initDragReorder() {
   }, { passive: true });
   grid.addEventListener('touchmove', e => {
     if (tClone) { e.preventDefault(); posC(e.touches[0]);
-      document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => el.classList.remove('drag-over-before','drag-over-after'));
-      const under = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.grid-item[data-tag="file"]');
-      if (under) { const r = under.getBoundingClientRect(); (e.touches[0].clientX < r.left+r.width/2) ? under.classList.add('drag-over-before') : under.classList.add('drag-over-after'); }
+      document.querySelectorAll('.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('drag-over-before','drag-over-after','drop-target'));
+      const pt = e.touches[0];
+      // Check tree row first
+      const treeRow = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.tree-row');
+      if (treeRow) { treeRow.classList.add('drop-target'); }
+      else {
+        // Check grid file for reorder
+        const under = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.grid-item[data-tag="file"]');
+        if (under) { const r = under.getBoundingClientRect(); (pt.clientX < r.left+r.width/2) ? under.classList.add('drag-over-before') : under.classList.add('drag-over-after'); }
+      }
     } else clearTimeout(tLP);
   }, { passive: false });
-  grid.addEventListener('touchend', e => {
+  grid.addEventListener('touchend', async e => {
     clearTimeout(tLP);
     if (tClone && tSrc !== null) {
-      const under = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY)?.closest('.grid-item[data-tag="file"]');
-      if (under) { const di = parseInt(under.dataset.index), r = under.getBoundingClientRect(); if (di !== tSrc) reorderEntries(di, e.changedTouches[0].clientX < r.left + r.width/2); }
+      const pt = e.changedTouches[0];
+      // Check if dropped on tree
+      const treeRow = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.tree-row');
+      if (treeRow) {
+        const destPath = treeRow.dataset.path;
+        const items = App.selected.size > 0
+          ? [...App.selected].map(i => App.entries[i]).filter(Boolean)
+          : (App.entries[tSrc] ? [App.entries[tSrc]] : []);
+        if (items.length) {
+          const invalid = items.some(it => { const rel = entryRelPath(it); return destPath === parentPath(rel) || (it['.tag']==='folder' && (destPath===rel||destPath.startsWith(rel+'/'))); });
+          if (!invalid) {
+            toast('移動中...');
+            let ok=0, fail=0;
+            for (const it of items) { try { await App.storage.move(entryRelPath(it), destPath ? destPath+'/'+it.name : it.name); ok++; } catch(_) { fail++; } }
+            toast(fail ? `${ok}件移動（${fail}件エラー）` : `${ok}件移動しました`);
+            App.selected.clear(); updateSelBadge(); loadFolder(App.currentPath); loadTree();
+          } else toast('移動先が無効です');
+        }
+      } else {
+        // Grid reorder (files only)
+        const under = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.grid-item[data-tag="file"]');
+        if (under) { const di = parseInt(under.dataset.index), r = under.getBoundingClientRect(); if (di !== tSrc) reorderEntries(di, pt.clientX < r.left + r.width/2); }
+      }
       tClone.remove(); tClone = null;
-      document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after'));
+      document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
       tSrc = null; App._touchDragging = false;
     }
   });
@@ -1480,6 +1552,53 @@ function setupEvents() {
 
   // Viewer
   $('#viewer-close').onclick = () => { closeViewer(); history.back(); };
+
+  // Tree right-click
+  $('#tree-list').addEventListener('contextmenu', e => {
+    const row = e.target.closest('.tree-row');
+    if (!row) return;
+    e.preventDefault(); e.stopPropagation();
+    showCtxTree(e.clientX, e.clientY, row.dataset.path);
+  });
+
+  // Tree D&D: drop grid items onto tree to move
+  $('#tree-list').addEventListener('dragover', e => {
+    if (dragSrcIdx === null && !App.selected.size) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.tree-row.drop-target').forEach(r => r.classList.remove('drop-target'));
+    const row = e.target.closest('.tree-row');
+    if (row) row.classList.add('drop-target');
+  });
+  $('#tree-list').addEventListener('dragleave', e => {
+    const row = e.target.closest('.tree-row');
+    if (row) row.classList.remove('drop-target');
+  });
+  $('#tree-list').addEventListener('drop', async e => {
+    e.preventDefault();
+    document.querySelectorAll('.tree-row.drop-target').forEach(r => r.classList.remove('drop-target'));
+    const row = e.target.closest('.tree-row');
+    if (!row) return;
+    const destPath = row.dataset.path;
+    const items = App.selected.size > 0
+      ? [...App.selected].map(i => App.entries[i]).filter(Boolean)
+      : (dragSrcIdx !== null && App.entries[dragSrcIdx] ? [App.entries[dragSrcIdx]] : []);
+    if (!items.length) return;
+    const invalid = items.some(it => {
+      const rel = entryRelPath(it);
+      return destPath === parentPath(rel) || (it['.tag'] === 'folder' && (destPath === rel || destPath.startsWith(rel + '/')));
+    });
+    if (invalid) { toast('移動先が無効です'); return; }
+    toast('移動中...');
+    let ok = 0, fail = 0;
+    for (const it of items) {
+      const fromRel = entryRelPath(it);
+      const toRel = destPath ? destPath + '/' + it.name : it.name;
+      try { await App.storage.move(fromRel, toRel); ok++; } catch(_) { fail++; }
+    }
+    toast(fail ? `${ok}件移動（${fail}件エラー）` : `${ok}件移動しました`);
+    App.selected.clear(); updateSelBadge();
+    loadFolder(App.currentPath); loadTree();
+  });
   $('#tap-left').onclick = vPrev; $('#tap-right').onclick = vNext; $('#tap-center').onclick = showViewerBar;
   $('#viewer-slider').oninput = e => loadViewerPage(parseInt(e.target.value));
 
