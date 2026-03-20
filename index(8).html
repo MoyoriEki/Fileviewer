@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Dropbox Filer</title>
+<link rel="stylesheet" href="https://moyorieki.github.io/storage-bridge/storage-bridge.css">
+<script src="https://moyorieki.github.io/storage-bridge/storage-bridge.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg: #111114;
+  --bg-raised: #19191e;
+  --bg-hover: #222228;
+  --bg-selected: #2a2a35;
+  --text: #d8d8e0;
+  --text-muted: #6e6e80;
+  --accent: #6ea8fe;
+  --accent-dim: rgba(110,168,254,0.12);
+  --accent-strong: #4d94ff;
+  --border: #28282e;
+  --border-light: #35353e;
+  --danger: #e85050;
+  --danger-dim: rgba(232,80,80,0.12);
+  --success: #4ecdc4;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --toolbar-h: 44px;
+  --sidebar-w: 200px;
+  --thumb-size: 160;
+  --sb-accent: #6ea8fe;
+  --sb-bg: #19191e;
+  --sb-text: #d8d8e0;
+  --sb-border: #28282e;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: 'Noto Sans JP', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Connection Screen ─────────────────────────────────── */
+#connection-screen {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100dvh; gap: 20px; padding: 24px; text-align: center;
+}
+#connection-screen h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; }
+#connection-screen p { color: var(--text-muted); max-width: 360px; font-size: 13px; }
+
+/* ── App Shell ─────────────────────────────────────────── */
+#app { display: none; height: 100dvh; flex-direction: column; }
+#app.active { display: flex; }
+
+/* ── Toolbar ───────────────────────────────────────────── */
+#toolbar {
+  display: flex; align-items: center; gap: 6px;
+  height: var(--toolbar-h); min-height: var(--toolbar-h);
+  padding: 0 10px; background: var(--bg-raised);
+  border-bottom: 1px solid var(--border); z-index: 20;
+}
+.tb-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border: none; border-radius: var(--radius);
+  background: transparent; color: var(--text); cursor: pointer; font-size: 16px;
+  transition: background 0.1s; flex-shrink: 0;
+}
+.tb-btn:hover { background: var(--bg-hover); }
+.tb-btn:active { background: var(--bg-selected); }
+.tb-btn.disabled { opacity: 0.3; pointer-events: none; }
+
+#breadcrumb {
+  display: flex; align-items: center; gap: 2px;
+  flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden;
+  padding: 0 4px; font-size: 12.5px; white-space: nowrap;
+  scrollbar-width: none;
+}
+#breadcrumb::-webkit-scrollbar { display: none; }
+.bc-item {
+  padding: 3px 7px; border-radius: 4px; cursor: pointer;
+  color: var(--text-muted); transition: all 0.1s; flex-shrink: 0;
+}
+.bc-item:hover { background: var(--bg-hover); color: var(--text); }
+.bc-item.current { color: var(--text); font-weight: 500; cursor: default; }
+.bc-item.current:hover { background: transparent; }
+.bc-sep { color: var(--border-light); flex-shrink: 0; font-size: 11px; }
+
+#thumb-slider {
+  width: 80px; height: 3px; accent-color: var(--accent);
+  cursor: pointer; opacity: 0.7; transition: opacity 0.15s;
+}
+#thumb-slider:hover { opacity: 1; }
+
+.tb-spacer { width: 1px; height: 20px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
+
+/* ── Body (Sidebar + Main) ────────────────────────────── */
+#body { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar ───────────────────────────────────────────── */
+#sidebar {
+  width: var(--sidebar-w); min-width: var(--sidebar-w);
+  background: var(--bg-raised); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+#sidebar-header {
+  padding: 10px 12px 6px; font-size: 11px; font-weight: 500;
+  color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase;
+}
+#fav-list { flex: 1; overflow-y: auto; padding: 2px 6px 10px; }
+.fav-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; border-radius: var(--radius); cursor: pointer;
+  font-size: 12.5px; color: var(--text); transition: background 0.1s;
+}
+.fav-item:hover { background: var(--bg-hover); }
+.fav-item.active { background: var(--accent-dim); color: var(--accent); }
+.fav-item .fav-icon { font-size: 14px; flex-shrink: 0; }
+.fav-item .fav-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fav-item .fav-remove {
+  display: none; width: 18px; height: 18px; border: none; border-radius: 3px;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  font-size: 12px; align-items: center; justify-content: center;
+}
+.fav-item:hover .fav-remove { display: flex; }
+.fav-item .fav-remove:hover { background: var(--danger-dim); color: var(--danger); }
+
+#sidebar-footer { padding: 8px; border-top: 1px solid var(--border); }
+#sidebar-footer button {
+  width: 100%; padding: 5px; border: none; border-radius: var(--radius);
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  font-family: inherit; font-size: 11.5px; transition: all 0.1s;
+}
+#sidebar-footer button:hover { background: var(--bg-hover); color: var(--text); }
+
+/* ── Main Area ─────────────────────────────────────────── */
+#main { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px; position: relative; }
+
+/* ── Grid ──────────────────────────────────────────────── */
+#grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--thumb-size) * 1px), 1fr));
+  gap: 8px;
+}
+.grid-item {
+  display: flex; flex-direction: column; align-items: center;
+  border-radius: var(--radius); cursor: pointer; padding: 6px;
+  transition: background 0.1s;
+}
+.grid-item:hover { background: var(--bg-hover); }
+.grid-thumb {
+  width: 100%; aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px; overflow: hidden; background: var(--bg);
+}
+.grid-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.grid-thumb .folder-icon { font-size: calc(var(--thumb-size) * 0.35px); color: var(--accent); opacity: 0.7; }
+.grid-thumb .file-icon { font-size: calc(var(--thumb-size) * 0.22px); color: var(--text-muted); opacity: 0.5; }
+.grid-thumb .loading-spinner {
+  width: 20px; height: 20px; border: 2px solid var(--border-light);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.grid-name {
+  margin-top: 4px; font-size: 11px; text-align: center;
+  width: 100%; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--text-muted); padding: 0 2px;
+}
+.grid-item:hover .grid-name { color: var(--text); }
+
+.empty-state {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; height: 200px; gap: 8px;
+  color: var(--text-muted); font-size: 13px;
+}
+.empty-state .empty-icon { font-size: 36px; opacity: 0.4; }
+
+#loading-overlay {
+  display: none; position: absolute; inset: 0;
+  background: var(--bg); z-index: 10;
+  align-items: center; justify-content: center;
+}
+#loading-overlay.active { display: flex; }
+
+/* ── Context Menu ──────────────────────────────────────── */
+#ctx-menu {
+  display: none; position: fixed; z-index: 200;
+  background: var(--bg-raised); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5); min-width: 160px;
+}
+#ctx-menu.show { display: block; }
+.ctx-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px; cursor: pointer; font-size: 12.5px;
+  color: var(--text); transition: background 0.08s;
+}
+.ctx-item:hover { background: var(--bg-hover); }
+.ctx-item.danger { color: var(--danger); }
+.ctx-item.danger:hover { background: var(--danger-dim); }
+.ctx-item .ctx-icon { width: 16px; text-align: center; font-size: 13px; }
+.ctx-sep { height: 1px; background: var(--border); margin: 4px 8px; }
+
+/* ── Image Viewer ──────────────────────────────────────── */
+#viewer {
+  display: none; position: fixed; inset: 0; z-index: 100;
+  background: #000; flex-direction: column;
+}
+#viewer.active { display: flex; }
+
+#viewer-topbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 110;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; background: linear-gradient(rgba(0,0,0,0.7), transparent);
+  opacity: 0; transition: opacity 0.2s; pointer-events: none;
+}
+#viewer-topbar.visible { opacity: 1; pointer-events: auto; }
+#viewer-title {
+  flex: 1; font-size: 13px; font-weight: 400; color: #fff;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.viewer-btn {
+  width: 36px; height: 36px; border: none; border-radius: var(--radius);
+  background: rgba(255,255,255,0.1); color: #fff; cursor: pointer;
+  font-size: 18px; display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s;
+}
+.viewer-btn:hover { background: rgba(255,255,255,0.2); }
+
+#viewer-img-wrap {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  overflow: hidden; position: relative;
+}
+#viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; transition: opacity 0.15s; }
+#viewer-img.loading { opacity: 0.3; }
+
+.tap-zone { position: absolute; top: 0; bottom: 0; width: 30%; z-index: 105; cursor: pointer; }
+.tap-zone.left { left: 0; }
+.tap-zone.right { right: 0; }
+.tap-zone.center { left: 30%; width: 40%; cursor: default; }
+
+#viewer-bottombar {
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 110;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 16px; background: linear-gradient(transparent, rgba(0,0,0,0.7));
+  opacity: 0; transition: opacity 0.2s; pointer-events: none;
+}
+#viewer-bottombar.visible { opacity: 1; pointer-events: auto; }
+#viewer-slider { flex: 1; height: 3px; accent-color: var(--accent); cursor: pointer; }
+#viewer-page-label { font-size: 12px; color: rgba(255,255,255,0.7); min-width: 60px; text-align: right; }
+
+/* ── Rename Modal ──────────────────────────────────────── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 300;
+  background: rgba(0,0,0,0.6); align-items: center; justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal-box {
+  background: var(--bg-raised); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 20px; width: 90%; max-width: 380px;
+}
+.modal-box h3 { font-size: 15px; font-weight: 500; margin-bottom: 12px; }
+.modal-input {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--bg); color: var(--text);
+  font-family: inherit; font-size: 13px; outline: none; transition: border-color 0.15s;
+}
+.modal-input:focus { border-color: var(--accent); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.modal-btn {
+  padding: 6px 16px; border: none; border-radius: var(--radius);
+  font-family: inherit; font-size: 13px; cursor: pointer; transition: all 0.1s;
+}
+.modal-btn.primary { background: var(--accent); color: #000; font-weight: 500; }
+.modal-btn.primary:hover { background: var(--accent-strong); }
+.modal-btn.cancel { background: var(--bg-hover); color: var(--text); }
+.modal-btn.cancel:hover { background: var(--bg-selected); }
+
+/* ── Toast ─────────────────────────────────────────────── */
+#toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  padding: 8px 18px; border-radius: var(--radius);
+  background: var(--bg-raised); border: 1px solid var(--border);
+  color: var(--text); font-size: 12.5px; z-index: 500;
+  opacity: 0; transition: opacity 0.2s; pointer-events: none;
+}
+#toast.show { opacity: 1; }
+
+/* ── Sort select ───────────────────────────────────────── */
+#sort-select {
+  background: transparent; border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-muted);
+  font-family: inherit; font-size: 11.5px; padding: 3px 6px;
+  cursor: pointer; outline: none; flex-shrink: 0;
+}
+#sort-select option { background: var(--bg-raised); color: var(--text); }
+
+/* ── Responsive ────────────────────────────────────────── */
+@media (max-width: 700px) {
+  #sidebar { display: none; }
+  #sidebar.mobile-open {
+    display: flex; position: fixed; top: var(--toolbar-h); left: 0; bottom: 0;
+    z-index: 50; box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+  }
+  #main { padding: 8px; }
+  #grid { gap: 6px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ════ Connection Screen ════ -->
+<div id="connection-screen">
+  <h1>Dropbox Filer</h1>
+  <p>Dropbox上のファイルをブラウズ・管理するファイラー</p>
+  <div id="dbx-ui"></div>
+</div>
+
+<!-- ════ App ════ -->
+<div id="app">
+  <div id="toolbar">
+    <button class="tb-btn" id="btn-sidebar" title="サイドバー">☰</button>
+    <button class="tb-btn" id="btn-back" title="戻る">←</button>
+    <button class="tb-btn" id="btn-forward" title="進む">→</button>
+    <button class="tb-btn" id="btn-up" title="上のフォルダ">↑</button>
+    <div id="breadcrumb"></div>
+    <select id="sort-select" title="並び替え">
+      <option value="name_asc">名前 ↑</option>
+      <option value="name_desc">名前 ↓</option>
+      <option value="date_desc">更新日 ↓</option>
+      <option value="date_asc">更新日 ↑</option>
+      <option value="size_desc">サイズ ↓</option>
+      <option value="size_asc">サイズ ↑</option>
+    </select>
+    <div class="tb-spacer"></div>
+    <input type="range" id="thumb-slider" min="80" max="320" value="160" title="サムネサイズ">
+    <div class="tb-spacer"></div>
+    <button class="tb-btn" id="btn-refresh" title="更新">⟳</button>
+    <button class="tb-btn" id="btn-disconnect" title="切断">⏻</button>
+  </div>
+  <div id="body">
+    <div id="sidebar">
+      <div id="sidebar-header">お気に入り</div>
+      <div id="fav-list"></div>
+      <div id="sidebar-footer">
+        <button id="btn-add-fav">＋ 現在のフォルダを追加</button>
+      </div>
+    </div>
+    <div id="main">
+      <div id="loading-overlay"><div class="loading-spinner" style="width:28px;height:28px;border:3px solid var(--border-light);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div></div>
+      <div id="grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════ Image Viewer ════ -->
+<div id="viewer">
+  <div id="viewer-topbar">
+    <span id="viewer-title"></span>
+    <button class="viewer-btn" id="viewer-close" title="閉じる">✕</button>
+  </div>
+  <div id="viewer-img-wrap">
+    <div class="tap-zone left" id="tap-left"></div>
+    <div class="tap-zone center" id="tap-center"></div>
+    <div class="tap-zone right" id="tap-right"></div>
+    <img id="viewer-img" src="" alt="">
+  </div>
+  <div id="viewer-bottombar">
+    <input type="range" id="viewer-slider" min="0" max="0" value="0">
+    <span id="viewer-page-label"></span>
+  </div>
+</div>
+
+<!-- ════ Context Menu ════ -->
+<div id="ctx-menu"></div>
+
+<!-- ════ Rename Modal ════ -->
+<div class="modal-overlay" id="modal-rename">
+  <div class="modal-box">
+    <h3>名前の変更</h3>
+    <input class="modal-input" id="rename-input" type="text" autocomplete="off">
+    <div class="modal-actions">
+      <button class="modal-btn cancel" id="rename-cancel">キャンセル</button>
+      <button class="modal-btn primary" id="rename-ok">変更</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ Toast ════ -->
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// App State
+// ════════════════════════════════════════════════════════════
+const App = {
+  storage: null,
+  currentPath: '',
+  entries: [],
+  history: [],
+  historyIndex: -1,
+  favorites: [],
+  thumbCache: {},
+  viewerImages: [],
+  viewerIndex: 0,
+  viewerVisible: false,
+  toolbarTimer: null,
+  sortMode: 'name_asc',
+  thumbSize: 160,
+  prefetchCache: {},
+};
+
+const BASE_PATH = '/DropboxFiler';
+const STORAGE_PREFIX = 'dbxfiler';
+const THUMB_EXTENSIONS = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','ppm']);
+const IMAGE_EXTENSIONS = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','svg']);
+
+// ════════════════════════════════════════════════════════════
+// IndexedDB
+// ════════════════════════════════════════════════════════════
+const IDB = {
+  db: null,
+  async open() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('DropboxFiler', 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('thumbs')) db.createObjectStore('thumbs');
+        if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
+      };
+      req.onsuccess = (e) => { IDB.db = e.target.result; resolve(); };
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async get(store, key) {
+    return new Promise((resolve) => {
+      const tx = IDB.db.transaction(store, 'readonly');
+      const r = tx.objectStore(store).get(key);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => resolve(undefined);
+    });
+  },
+  async put(store, key, value) {
+    return new Promise((resolve) => {
+      const tx = IDB.db.transaction(store, 'readwrite');
+      tx.objectStore(store).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  },
+};
+
+// ════════════════════════════════════════════════════════════
+// Dropbox Thumbnail API (direct call, not in StorageBridge)
+// ════════════════════════════════════════════════════════════
+function dbxArg(obj) {
+  return JSON.stringify(obj).replace(/[\u0080-\uFFFF]/g,
+    c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+}
+
+async function fetchThumbnail(dropboxPath, size) {
+  size = size || 'w256h256';
+  const token = App.storage.getToken();
+  if (!token) throw new Error('Not connected');
+  const r = await fetch('https://content.dropboxapi.com/2/files/get_thumbnail_v2', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Dropbox-API-Arg': dbxArg({
+        resource: { '.tag': 'path', path: dropboxPath },
+        format: 'jpeg', size: size, mode: 'bestfit',
+      }),
+    },
+  });
+  if (!r.ok) throw new Error('Thumbnail failed: ' + r.status);
+  return r.blob();
+}
+
+// ════════════════════════════════════════════════════════════
+// Helpers
+// ════════════════════════════════════════════════════════════
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+function ext(name) { const i = name.lastIndexOf('.'); return i > 0 ? name.slice(i + 1).toLowerCase() : ''; }
+function baseName(p) { return p.split('/').pop(); }
+function parentPath(p) { const parts = p.split('/'); parts.pop(); return parts.join('/'); }
+function fullPath(rel) { return rel ? `${BASE_PATH}/${rel}` : BASE_PATH; }
+
+function toast(msg) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function entryRelativePath(entry) {
+  const abs = entry.path_display || entry.path_lower || '';
+  const prefix = BASE_PATH + '/';
+  if (abs.toLowerCase().startsWith(BASE_PATH.toLowerCase() + '/')) {
+    return abs.slice(prefix.length);
+  }
+  return entry.name;
+}
+
+// ════════════════════════════════════════════════════════════
+// Init
+// ════════════════════════════════════════════════════════════
+async function init() {
+  await IDB.open();
+
+  const savedThumb = await IDB.get('settings', 'thumbSize');
+  if (savedThumb) {
+    App.thumbSize = savedThumb;
+    $('#thumb-slider').value = savedThumb;
+    document.documentElement.style.setProperty('--thumb-size', savedThumb);
+  }
+  const savedSort = await IDB.get('settings', 'sortMode');
+  if (savedSort) { App.sortMode = savedSort; $('#sort-select').value = savedSort; }
+  const savedFavs = await IDB.get('settings', 'favorites');
+  if (savedFavs) App.favorites = savedFavs;
+  const savedPath = await IDB.get('settings', 'lastPath');
+
+  App.storage = new StorageBridge({
+    basePath: BASE_PATH,
+    storagePrefix: STORAGE_PREFIX,
+    ui: true,
+    uiTarget: '#dbx-ui',
+  });
+
+  App.storage.on('connected', async () => {
+    $('#connection-screen').style.display = 'none';
+    $('#app').classList.add('active');
+    renderFavorites();
+    await navigate(savedPath || '', true);
+  });
+
+  App.storage.on('disconnected', () => {
+    $('#connection-screen').style.display = '';
+    $('#app').classList.remove('active');
+  });
+
+  if (App.storage.isConnected) {
+    $('#connection-screen').style.display = 'none';
+    $('#app').classList.add('active');
+    renderFavorites();
+    navigate(savedPath || '', true);
+  }
+
+  setupEvents();
+}
+
+// ════════════════════════════════════════════════════════════
+// Navigation
+// ════════════════════════════════════════════════════════════
+async function navigate(path, replace) {
+  path = (path || '').replace(/^\/+|\/+$/g, '');
+  if (replace) {
+    if (App.historyIndex === -1) { App.history = [path]; App.historyIndex = 0; }
+    else { App.history[App.historyIndex] = path; }
+  } else {
+    App.history = App.history.slice(0, App.historyIndex + 1);
+    App.history.push(path);
+    App.historyIndex = App.history.length - 1;
+  }
+  App.currentPath = path;
+  await IDB.put('settings', 'lastPath', path);
+  updateNavButtons();
+  renderBreadcrumb();
+  renderFavorites();
+  await loadFolder(path);
+}
+
+async function loadFolder(path) {
+  const loading = $('#loading-overlay');
+  loading.classList.add('active');
+  try {
+    const entries = await App.storage.list(path || '');
+    App.entries = sortEntries(entries);
+    renderGrid();
+  } catch (e) {
+    console.error('loadFolder error:', e);
+    $('#grid').innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">⚠</div><div>読み込みエラー</div></div>';
+  } finally {
+    loading.classList.remove('active');
+  }
+}
+
+function sortEntries(entries) {
+  const folders = entries.filter(e => e['.tag'] === 'folder');
+  const files = entries.filter(e => e['.tag'] === 'file');
+  const cmp = (a, b) => {
+    switch (App.sortMode) {
+      case 'name_asc': return a.name.localeCompare(b.name, 'ja');
+      case 'name_desc': return b.name.localeCompare(a.name, 'ja');
+      case 'date_desc': return (b.client_modified || '').localeCompare(a.client_modified || '');
+      case 'date_asc': return (a.client_modified || '').localeCompare(b.client_modified || '');
+      case 'size_desc': return (b.size || 0) - (a.size || 0);
+      case 'size_asc': return (a.size || 0) - (b.size || 0);
+      default: return 0;
+    }
+  };
+  folders.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  files.sort(cmp);
+  return [...folders, ...files];
+}
+
+function updateNavButtons() {
+  $('#btn-back').classList.toggle('disabled', App.historyIndex <= 0);
+  $('#btn-forward').classList.toggle('disabled', App.historyIndex >= App.history.length - 1);
+  $('#btn-up').classList.toggle('disabled', !App.currentPath);
+}
+
+// ════════════════════════════════════════════════════════════
+// Breadcrumb
+// ════════════════════════════════════════════════════════════
+function renderBreadcrumb() {
+  const bc = $('#breadcrumb');
+  const parts = App.currentPath ? App.currentPath.split('/') : [];
+  let html = `<span class="bc-item${parts.length === 0 ? ' current' : ''}" data-path="">DropboxFiler</span>`;
+  let acc = '';
+  for (let i = 0; i < parts.length; i++) {
+    acc += (acc ? '/' : '') + parts[i];
+    const cur = i === parts.length - 1;
+    html += '<span class="bc-sep">›</span>';
+    html += `<span class="bc-item${cur ? ' current' : ''}" data-path="${acc}">${parts[i]}</span>`;
+  }
+  bc.innerHTML = html;
+  bc.scrollLeft = bc.scrollWidth;
+}
+
+// ════════════════════════════════════════════════════════════
+// Grid
+// ════════════════════════════════════════════════════════════
+function renderGrid() {
+  const grid = $('#grid');
+  const entries = App.entries;
+  if (!entries.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">📂</div><div>空のフォルダ</div></div>';
+    return;
+  }
+  grid.innerHTML = entries.map((entry, idx) => {
+    const isFolder = entry['.tag'] === 'folder';
+    const e = ext(entry.name);
+    return `<div class="grid-item" data-index="${idx}" data-tag="${entry['.tag']}">
+      <div class="grid-thumb" id="thumb-${idx}">
+        ${isFolder ? '<span class="folder-icon">📁</span>'
+          : (THUMB_EXTENSIONS.has(e) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">📄</span>')}
+      </div>
+      <div class="grid-name" title="${entry.name}">${entry.name}</div>
+    </div>`;
+  }).join('');
+  setupIntersectionObserver();
+}
+
+// ════════════════════════════════════════════════════════════
+// Thumbnail Loading
+// ════════════════════════════════════════════════════════════
+let observer = null;
+function setupIntersectionObserver() {
+  if (observer) observer.disconnect();
+  observer = new IntersectionObserver((ioEntries) => {
+    for (const io of ioEntries) {
+      if (io.isIntersecting) {
+        loadThumb(parseInt(io.target.dataset.index));
+        observer.unobserve(io.target);
+      }
+    }
+  }, { root: $('#main'), rootMargin: '200px' });
+  $$('.grid-item').forEach(el => {
+    const idx = parseInt(el.dataset.index);
+    const entry = App.entries[idx];
+    if (entry && entry['.tag'] === 'file' && THUMB_EXTENSIONS.has(ext(entry.name))) {
+      observer.observe(el);
+    }
+  });
+}
+
+const thumbQ = { running: 0, max: 4, waiters: [] };
+function thumbSlot() {
+  if (thumbQ.running < thumbQ.max) { thumbQ.running++; return Promise.resolve(); }
+  return new Promise(r => thumbQ.waiters.push(r));
+}
+function thumbRelease() {
+  thumbQ.running--;
+  if (thumbQ.waiters.length > 0) { thumbQ.running++; thumbQ.waiters.shift()(); }
+}
+
+async function loadThumb(idx) {
+  const entry = App.entries[idx];
+  if (!entry || entry['.tag'] !== 'file' || !THUMB_EXTENSIONS.has(ext(entry.name))) return;
+  const el = document.getElementById('thumb-' + idx);
+  if (!el) return;
+
+  const absPath = entry.path_lower;
+  const cacheKey = absPath + ':' + (entry.content_hash || '');
+
+  if (App.thumbCache[cacheKey]) {
+    el.innerHTML = `<img src="${App.thumbCache[cacheKey]}" alt="">`;
+    return;
+  }
+  const cached = await IDB.get('thumbs', cacheKey);
+  if (cached) {
+    const url = URL.createObjectURL(new Blob([cached], { type: 'image/jpeg' }));
+    App.thumbCache[cacheKey] = url;
+    el.innerHTML = `<img src="${url}" alt="">`;
+    return;
+  }
+
+  await thumbSlot();
+  try {
+    const blob = await fetchThumbnail(entry.path_display || absPath);
+    const buf = await blob.arrayBuffer();
+    const url = URL.createObjectURL(new Blob([buf], { type: 'image/jpeg' }));
+    App.thumbCache[cacheKey] = url;
+    await IDB.put('thumbs', cacheKey, buf);
+    const cur = document.getElementById('thumb-' + idx);
+    if (cur) cur.innerHTML = `<img src="${url}" alt="">`;
+  } catch (e) {
+    const cur = document.getElementById('thumb-' + idx);
+    if (cur) cur.innerHTML = '<span class="file-icon">🖼</span>';
+  } finally {
+    thumbRelease();
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Favorites
+// ════════════════════════════════════════════════════════════
+function renderFavorites() {
+  const list = $('#fav-list');
+  if (!App.favorites.length) {
+    list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:11.5px;text-align:center">お気に入りなし</div>';
+    return;
+  }
+  list.innerHTML = App.favorites.map((fav, i) => `
+    <div class="fav-item${App.currentPath === fav.path ? ' active' : ''}" data-path="${fav.path}" data-index="${i}">
+      <span class="fav-icon">📁</span>
+      <span class="fav-name" title="${fav.path || 'ルート'}">${fav.name}</span>
+      <button class="fav-remove" data-index="${i}" title="削除">✕</button>
+    </div>`).join('');
+}
+function addFavorite(path) {
+  if (App.favorites.some(f => f.path === path)) { toast('追加済みです'); return; }
+  App.favorites.push({ path, name: path ? baseName(path) : 'ルート' });
+  IDB.put('settings', 'favorites', App.favorites);
+  renderFavorites();
+  toast('お気に入りに追加しました');
+}
+function removeFavorite(i) {
+  App.favorites.splice(i, 1);
+  IDB.put('settings', 'favorites', App.favorites);
+  renderFavorites();
+}
+
+// ════════════════════════════════════════════════════════════
+// Context Menu
+// ════════════════════════════════════════════════════════════
+let ctxTarget = null;
+function showContextMenu(x, y, entry) {
+  ctxTarget = entry;
+  const menu = $('#ctx-menu');
+  const isFolder = entry['.tag'] === 'folder';
+  const e = ext(entry.name);
+  let html = '';
+  if (isFolder) {
+    html += `<div class="ctx-item" data-action="open"><span class="ctx-icon">📂</span>開く</div>`;
+    html += `<div class="ctx-item" data-action="fav"><span class="ctx-icon">⭐</span>お気に入りに追加</div>`;
+    html += '<div class="ctx-sep"></div>';
+  } else if (IMAGE_EXTENSIONS.has(e)) {
+    html += `<div class="ctx-item" data-action="view"><span class="ctx-icon">🖼</span>画像を開く</div>`;
+    html += '<div class="ctx-sep"></div>';
+  }
+  html += `<div class="ctx-item" data-action="rename"><span class="ctx-icon">✏</span>名前の変更</div>`;
+  html += `<div class="ctx-item danger" data-action="delete"><span class="ctx-icon">🗑</span>削除</div>`;
+  menu.innerHTML = html;
+  menu.style.left = Math.min(x, innerWidth - 180) + 'px';
+  menu.style.top = Math.min(y, innerHeight - 200) + 'px';
+  menu.classList.add('show');
+}
+function hideContextMenu() { $('#ctx-menu').classList.remove('show'); ctxTarget = null; }
+
+async function handleCtx(action) {
+  if (!ctxTarget) return;
+  const entry = ctxTarget;
+  hideContextMenu();
+  const rel = entryRelativePath(entry);
+  switch (action) {
+    case 'open': await navigate(rel); break;
+    case 'view': openViewer(entry); break;
+    case 'fav': addFavorite(rel); break;
+    case 'rename': showRenameModal(entry); break;
+    case 'delete': await deleteEntry(entry); break;
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// Rename / Delete
+// ════════════════════════════════════════════════════════════
+let renameTarget = null;
+function showRenameModal(entry) {
+  renameTarget = entry;
+  const input = $('#rename-input');
+  input.value = entry['.tag'] === 'folder' ? entry.name : entry.name.replace(/\.[^.]+$/, '');
+  $('#modal-rename').classList.add('show');
+  setTimeout(() => { input.focus(); input.select(); }, 50);
+}
+async function executeRename() {
+  if (!renameTarget) return;
+  const entry = renameTarget;
+  const newName = $('#rename-input').value.trim();
+  if (!newName) return;
+  const e = ext(entry.name);
+  const finalName = (entry['.tag'] === 'file' && e) ? newName + '.' + e : newName;
+  if (finalName === entry.name) { $('#modal-rename').classList.remove('show'); return; }
+  const rel = entryRelativePath(entry);
+  const parent = parentPath(rel);
+  const newRel = parent ? parent + '/' + finalName : finalName;
+  try {
+    await App.storage.move(rel, newRel);
+    toast('名前を変更しました');
+    $('#modal-rename').classList.remove('show');
+    await loadFolder(App.currentPath);
+  } catch (e) { toast('エラー: ' + e.message); }
+}
+async function deleteEntry(entry) {
+  if (!confirm(`「${entry.name}」を削除しますか？`)) return;
+  try {
+    await App.storage.delete(entryRelativePath(entry));
+    toast('削除しました');
+    await loadFolder(App.currentPath);
+  } catch (e) { toast('削除エラー: ' + e.message); }
+}
+
+// ════════════════════════════════════════════════════════════
+// Image Viewer
+// ════════════════════════════════════════════════════════════
+function openViewer(entry) {
+  App.viewerImages = App.entries.filter(e => e['.tag'] === 'file' && IMAGE_EXTENSIONS.has(ext(e.name)));
+  const idx = App.viewerImages.indexOf(entry);
+  if (idx === -1) return;
+  App.viewerIndex = idx;
+  App.viewerVisible = true;
+  $('#viewer').classList.add('active');
+  showViewerToolbar();
+  loadViewerPage(idx);
+  updateViewerSlider();
+  history.pushState({ viewer: true }, '');
+}
+function closeViewer() {
+  App.viewerVisible = false;
+  $('#viewer').classList.remove('active');
+  Object.values(App.prefetchCache).forEach(u => URL.revokeObjectURL(u));
+  App.prefetchCache = {};
+}
+async function loadViewerPage(idx) {
+  if (idx < 0 || idx >= App.viewerImages.length) return;
+  App.viewerIndex = idx;
+  const entry = App.viewerImages[idx];
+  const rel = entryRelativePath(entry);
+  const img = $('#viewer-img');
+  $('#viewer-title').textContent = entry.name;
+  updateViewerSlider();
+  img.classList.add('loading');
+  try {
+    let url = App.prefetchCache[rel];
+    if (!url) {
+      const buf = await App.storage.loadBinary(rel);
+      const e = ext(entry.name);
+      const mime = e === 'svg' ? 'image/svg+xml' : 'image/' + (e === 'jpg' ? 'jpeg' : e);
+      url = URL.createObjectURL(new Blob([buf], { type: mime }));
+    }
+    img.src = url;
+    img.onload = () => img.classList.remove('loading');
+  } catch (e) {
+    console.error('Viewer load error:', e);
+    img.classList.remove('loading');
+  }
+  prefetchViewer(idx);
+}
+async function prefetchViewer(cur) {
+  for (const off of [1, -1, 2, -2]) {
+    const i = cur + off;
+    if (i < 0 || i >= App.viewerImages.length) continue;
+    const entry = App.viewerImages[i];
+    const rel = entryRelativePath(entry);
+    if (App.prefetchCache[rel]) continue;
+    try {
+      const buf = await App.storage.loadBinary(rel);
+      const e = ext(entry.name);
+      const mime = e === 'svg' ? 'image/svg+xml' : 'image/' + (e === 'jpg' ? 'jpeg' : e);
+      App.prefetchCache[rel] = URL.createObjectURL(new Blob([buf], { type: mime }));
+    } catch (_) {}
+  }
+}
+function viewerPrev() { if (App.viewerIndex > 0) loadViewerPage(App.viewerIndex - 1); }
+function viewerNext() { if (App.viewerIndex < App.viewerImages.length - 1) loadViewerPage(App.viewerIndex + 1); }
+function updateViewerSlider() {
+  const s = $('#viewer-slider');
+  s.max = App.viewerImages.length - 1;
+  s.value = App.viewerIndex;
+  $('#viewer-page-label').textContent = `${App.viewerIndex + 1} / ${App.viewerImages.length}`;
+}
+function showViewerToolbar() {
+  $('#viewer-topbar').classList.add('visible');
+  $('#viewer-bottombar').classList.add('visible');
+  clearTimeout(App.toolbarTimer);
+  App.toolbarTimer = setTimeout(() => {
+    if (App.viewerVisible) {
+      $('#viewer-topbar').classList.remove('visible');
+      $('#viewer-bottombar').classList.remove('visible');
+    }
+  }, 3000);
+}
+
+// ════════════════════════════════════════════════════════════
+// Events
+// ════════════════════════════════════════════════════════════
+function setupEvents() {
+  $('#btn-back').onclick = () => {
+    if (App.historyIndex > 0) { App.historyIndex--; navigate(App.history[App.historyIndex], true); }
+  };
+  $('#btn-forward').onclick = () => {
+    if (App.historyIndex < App.history.length - 1) { App.historyIndex++; navigate(App.history[App.historyIndex], true); }
+  };
+  $('#btn-up').onclick = () => { if (App.currentPath) navigate(parentPath(App.currentPath)); };
+  $('#btn-refresh').onclick = () => loadFolder(App.currentPath);
+  $('#btn-disconnect').onclick = () => App.storage.disconnect();
+  $('#btn-sidebar').onclick = () => $('#sidebar').classList.toggle('mobile-open');
+
+  // Breadcrumb
+  $('#breadcrumb').addEventListener('click', (e) => {
+    const item = e.target.closest('.bc-item');
+    if (item && !item.classList.contains('current')) navigate(item.dataset.path);
+  });
+
+  // Sort
+  $('#sort-select').onchange = (e) => {
+    App.sortMode = e.target.value;
+    IDB.put('settings', 'sortMode', App.sortMode);
+    App.entries = sortEntries(App.entries);
+    renderGrid();
+  };
+
+  // Thumb slider
+  $('#thumb-slider').oninput = (e) => {
+    App.thumbSize = parseInt(e.target.value);
+    document.documentElement.style.setProperty('--thumb-size', App.thumbSize);
+    IDB.put('settings', 'thumbSize', App.thumbSize);
+  };
+
+  // Favorites
+  $('#btn-add-fav').onclick = () => addFavorite(App.currentPath);
+  $('#fav-list').addEventListener('click', (e) => {
+    const rm = e.target.closest('.fav-remove');
+    if (rm) { removeFavorite(parseInt(rm.dataset.index)); return; }
+    const item = e.target.closest('.fav-item');
+    if (item) { navigate(item.dataset.path); $('#sidebar').classList.remove('mobile-open'); }
+  });
+
+  // Grid: double click / double tap
+  let lastTapTime = 0, lastTapEl = null;
+  $('#grid').addEventListener('click', (e) => {
+    const item = e.target.closest('.grid-item');
+    if (!item) return;
+    const now = Date.now();
+    if (now - lastTapTime < 350 && lastTapEl === item) { handleItemOpen(item); lastTapTime = 0; return; }
+    lastTapTime = now; lastTapEl = item;
+  });
+  $('#grid').addEventListener('dblclick', (e) => {
+    const item = e.target.closest('.grid-item');
+    if (item) handleItemOpen(item);
+  });
+
+  // Context menu
+  $('#grid').addEventListener('contextmenu', (e) => {
+    const item = e.target.closest('.grid-item');
+    if (!item) return;
+    e.preventDefault();
+    const entry = App.entries[parseInt(item.dataset.index)];
+    if (entry) showContextMenu(e.clientX, e.clientY, entry);
+  });
+  // Long press
+  let lpTimer = null;
+  $('#grid').addEventListener('touchstart', (e) => {
+    const item = e.target.closest('.grid-item');
+    if (!item) return;
+    lpTimer = setTimeout(() => {
+      const entry = App.entries[parseInt(item.dataset.index)];
+      if (entry) showContextMenu(e.touches[0].clientX, e.touches[0].clientY, entry);
+    }, 500);
+  }, { passive: true });
+  $('#grid').addEventListener('touchend', () => clearTimeout(lpTimer));
+  $('#grid').addEventListener('touchmove', () => clearTimeout(lpTimer));
+
+  document.addEventListener('click', (e) => { if (!e.target.closest('#ctx-menu')) hideContextMenu(); });
+  $('#ctx-menu').addEventListener('click', (e) => {
+    const item = e.target.closest('.ctx-item');
+    if (item) handleCtx(item.dataset.action);
+  });
+
+  // Rename
+  $('#rename-ok').onclick = executeRename;
+  $('#rename-cancel').onclick = () => $('#modal-rename').classList.remove('show');
+  $('#rename-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') executeRename();
+    if (e.key === 'Escape') $('#modal-rename').classList.remove('show');
+  });
+
+  // Viewer
+  $('#viewer-close').onclick = closeViewer;
+  $('#tap-left').onclick = viewerPrev;
+  $('#tap-right').onclick = viewerNext;
+  $('#tap-center').onclick = showViewerToolbar;
+  $('#viewer-slider').oninput = (e) => loadViewerPage(parseInt(e.target.value));
+
+  // Keyboard
+  document.addEventListener('keydown', (e) => {
+    if (e.target.closest('input')) return;
+    if (App.viewerVisible) {
+      if (e.key === 'Escape') { closeViewer(); history.back(); }
+      else if (e.key === 'ArrowLeft') viewerPrev();
+      else if (e.key === 'ArrowRight') viewerNext();
+      return;
+    }
+    if (e.key === 'Backspace') { e.preventDefault(); if (App.currentPath) navigate(parentPath(App.currentPath)); }
+  });
+
+  // Viewer swipe
+  let sx = 0;
+  $('#viewer-img-wrap').addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; }, { passive: true });
+  $('#viewer-img-wrap').addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - sx;
+    if (Math.abs(dx) > 50) { dx > 0 ? viewerPrev() : viewerNext(); }
+  });
+
+  // Viewer mouse → show toolbar
+  $('#viewer').addEventListener('mousemove', () => { if (App.viewerVisible) showViewerToolbar(); });
+
+  // Viewer wheel
+  let wheelCD = false;
+  $('#viewer').addEventListener('wheel', (e) => {
+    if (!App.viewerVisible || wheelCD) return;
+    e.preventDefault(); wheelCD = true;
+    setTimeout(() => { wheelCD = false; }, 200);
+    e.deltaY > 0 ? viewerNext() : viewerPrev();
+  }, { passive: false });
+
+  // Browser back
+  window.addEventListener('popstate', () => { if (App.viewerVisible) closeViewer(); });
+}
+
+function handleItemOpen(itemEl) {
+  const entry = App.entries[parseInt(itemEl.dataset.index)];
+  if (!entry) return;
+  if (entry['.tag'] === 'folder') navigate(entryRelativePath(entry));
+  else if (IMAGE_EXTENSIONS.has(ext(entry.name))) openViewer(entry);
+}
+
+// ════════════════════════════════════════════════════════════
+// Start
+// ════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
