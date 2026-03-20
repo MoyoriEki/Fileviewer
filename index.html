@@ -470,7 +470,6 @@ async function loadSettings() {
   } catch(_) {}
 
   const local = {
-    thumbSize: await IDB.get('settings','thumbSize'),
     sortMode: await IDB.get('settings','sortMode'),
     favorites: await IDB.get('settings','favorites'),
     lastPath: await IDB.get('settings','lastPath'),
@@ -487,7 +486,6 @@ async function loadSettings() {
     for (const f of localFavs) favMap.set(f.path, f);
     for (const f of cloudFavs) favMap.set(f.path, f); // cloud wins on conflict
     merged = {
-      thumbSize: cloud.thumbSize ?? local.thumbSize ?? 160,
       sortMode: cloud.sortMode ?? local.sortMode ?? 'name_asc',
       favorites: [...favMap.values()],
       lastPath: cloud.lastPath ?? local.lastPath ?? '',
@@ -497,7 +495,6 @@ async function loadSettings() {
   } else {
     // No cloud file — use local and push to cloud immediately
     merged = {
-      thumbSize: local.thumbSize ?? 160,
       sortMode: local.sortMode ?? 'name_asc',
       favorites: local.favorites ?? [],
       lastPath: local.lastPath ?? '',
@@ -509,7 +506,6 @@ async function loadSettings() {
   }
 
   // Write back to IDB
-  IDB.put('settings','thumbSize', merged.thumbSize);
   IDB.put('settings','sortMode', merged.sortMode);
   IDB.put('settings','favorites', merged.favorites);
   IDB.put('settings','lastPath', merged.lastPath);
@@ -522,7 +518,7 @@ async function loadSettings() {
 async function saveSettingsNow(data) {
   try {
     const d = data || {
-      thumbSize: App.thumbSize, sortMode: App.sortMode,
+      sortMode: App.sortMode,
       favorites: App.favorites, lastPath: App.currentPath,
       sidebarHidden: $('#sidebar').classList.contains('hidden'),
       customOrders: App.customOrders || {},
@@ -559,8 +555,8 @@ async function init() {
   await IDB.open();
 
   // Load IDB settings for instant display (before Dropbox connects)
-  const localThumb = await IDB.get('settings','thumbSize');
-  if (localThumb) { App.thumbSize = localThumb; $('#thumb-slider').value = localThumb; document.documentElement.style.setProperty('--thumb-size', localThumb); }
+  const localThumb = parseInt(localStorage.getItem('dbxfiler_thumbSize')) || 160;
+  App.thumbSize = localThumb; $('#thumb-slider').value = localThumb; document.documentElement.style.setProperty('--thumb-size', localThumb);
   const localSort = await IDB.get('settings','sortMode');
   if (localSort) { App.sortMode = localSort; $('#sort-select').value = localSort; }
   const localFavs = await IDB.get('settings','favorites');
@@ -577,7 +573,6 @@ async function init() {
     $('#app').classList.add('active');
     // Load cloud settings (merge with local)
     const s = await loadSettings();
-    App.thumbSize = s.thumbSize; $('#thumb-slider').value = s.thumbSize; document.documentElement.style.setProperty('--thumb-size', s.thumbSize);
     App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
     App.favorites = s.favorites;
     App.customOrders = s.customOrders || {};
@@ -589,7 +584,6 @@ async function init() {
   if (App.storage.isConnected) {
     $('#connection-screen').style.display = 'none'; $('#app').classList.add('active');
     const s = await loadSettings();
-    App.thumbSize = s.thumbSize; $('#thumb-slider').value = s.thumbSize; document.documentElement.style.setProperty('--thumb-size', s.thumbSize);
     App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
     App.favorites = s.favorites;
     App.customOrders = s.customOrders || {};
@@ -1016,7 +1010,7 @@ function setupEvents() {
 
   $('#breadcrumb').addEventListener('click', e => { const item = e.target.closest('.bc-item'); if (item && !item.classList.contains('current')) navigate(item.dataset.path); });
   $('#sort-select').onchange = e => { App.sortMode = e.target.value; saveSetting('sortMode', App.sortMode); if (App.customOrders) { delete App.customOrders[customOrderKey()]; saveSetting('customOrders', App.customOrders); } App.entries = sortEntries(App.entries); renderGrid(App.navGen); };
-  $('#thumb-slider').oninput = e => { App.thumbSize = parseInt(e.target.value); document.documentElement.style.setProperty('--thumb-size', App.thumbSize); saveSetting('thumbSize', App.thumbSize); };
+  $('#thumb-slider').oninput = e => { App.thumbSize = parseInt(e.target.value); document.documentElement.style.setProperty('--thumb-size', App.thumbSize); localStorage.setItem('dbxfiler_thumbSize', App.thumbSize); };
   $('#btn-add-fav').onclick = () => addFavorite(App.currentPath);
   $('#fav-list').addEventListener('click', e => { const rm = e.target.closest('.fav-remove'); if (rm) { removeFavorite(parseInt(rm.dataset.index)); return; } const item = e.target.closest('.fav-item'); if (item) { navigate(item.dataset.path); $('#sidebar').classList.remove('mobile-open'); } });
 
