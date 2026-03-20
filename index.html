@@ -128,13 +128,13 @@ body {
 #sidebar-footer button:hover { background: var(--bg-hover); color: var(--text); }
 
 /* ── Main ──────────────────────────────────────────────── */
-#main { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px; position: relative; }
+#main { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 10px 40vh; position: relative; }
 
 /* ── Grid ──────────────────────────────────────────────── */
 #grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(calc(var(--thumb-size) * 1px), 1fr));
-  gap: 4px;
+  gap: 6px;
 }
 .grid-item {
   display: flex; flex-direction: column; align-items: center;
@@ -827,50 +827,68 @@ function setupEvents() {
   // Grid click: select + double-click open
   let lastTapT = 0, lastTapEl = null;
   $('#grid').addEventListener('click', e => {
-    // Checkbox click — toggle without opening
+    // Suppress click after lasso
+    if (lassoState?.prevented) return;
+    
+    // Checkbox click
     const chk = e.target.closest('.grid-check');
     if (chk) { e.stopPropagation(); const idx = parseInt(chk.dataset.check); toggleSelect(idx, true, false); return; }
 
-    const item = e.target.closest('.grid-item'); if (!item) { clearSelection(); return; }
+    const item = e.target.closest('.grid-item'); if (!item) { if (!lassoState?.prevented) clearSelection(); return; }
     const idx = parseInt(item.dataset.index), now = Date.now();
     if (now - lastTapT < 350 && lastTapEl === item) { handleOpen(item); lastTapT = 0; return; }
     lastTapT = now; lastTapEl = item;
     toggleSelect(idx, e.ctrlKey || e.metaKey, e.shiftKey);
   });
 
-  // Rubber-band (lasso) selection
-  let lasso = null;
+  // Rubber-band (lasso) selection — starts anywhere in main, threshold 5px
+  let lassoState = null; // { startX, startY, active, prevented }
   $('#main').addEventListener('mousedown', e => {
-    if (e.button !== 0 || e.target.closest('.grid-item') || e.target.closest('.grid-check')) return;
-    const mainRect = $('#main').getBoundingClientRect();
-    lasso = { startX: e.clientX, startY: e.clientY, scrollTop: $('#main').scrollTop };
-    const el = $('#lasso');
-    el.style.left = e.clientX + 'px'; el.style.top = e.clientY + 'px';
-    el.style.width = '0'; el.style.height = '0';
-    el.style.display = 'block';
-    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { App.selected.clear(); updateSelectionUI(); }
+    if (e.button !== 0) return;
+    // Don't lasso from checkbox or during viewer
+    if (e.target.closest('.grid-check') || App.viewerVisible) return;
+    lassoState = { startX: e.clientX, startY: e.clientY, active: false, prevented: false, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey };
   });
   document.addEventListener('mousemove', e => {
-    if (!lasso) return;
+    if (!lassoState) return;
+    const dx = e.clientX - lassoState.startX, dy = e.clientY - lassoState.startY;
+    // Threshold: start lasso after 5px movement
+    if (!lassoState.active) {
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      lassoState.active = true;
+      if (!lassoState.ctrl && !lassoState.shift) { App.selected.clear(); updateSelectionUI(); }
+      $('#lasso').style.display = 'block';
+    }
     const el = $('#lasso');
-    const x1 = Math.min(lasso.startX, e.clientX), y1 = Math.min(lasso.startY, e.clientY);
-    const x2 = Math.max(lasso.startX, e.clientX), y2 = Math.max(lasso.startY, e.clientY);
+    const x1 = Math.min(lassoState.startX, e.clientX), y1 = Math.min(lassoState.startY, e.clientY);
+    const x2 = Math.max(lassoState.startX, e.clientX), y2 = Math.max(lassoState.startY, e.clientY);
     el.style.left = x1 + 'px'; el.style.top = y1 + 'px';
     el.style.width = (x2 - x1) + 'px'; el.style.height = (y2 - y1) + 'px';
     // Hit test grid items
-    const lassoRect = { left: x1, top: y1, right: x2, bottom: y2 };
     document.querySelectorAll('.grid-item').forEach(item => {
       const r = item.getBoundingClientRect();
       const idx = parseInt(item.dataset.index);
-      const hit = !(r.right < lassoRect.left || r.left > lassoRect.right || r.bottom < lassoRect.top || r.top > lassoRect.bottom);
-      if (hit) App.selected.add(idx); else if (!e.ctrlKey && !e.metaKey) App.selected.delete(idx);
+      const hit = !(r.right < x1 || r.left > x2 || r.bottom < y1 || r.top > y2);
+      if (hit) App.selected.add(idx);
+      else if (!lassoState.ctrl) App.selected.delete(idx);
     });
     updateSelectionUI();
   });
   document.addEventListener('mouseup', () => {
-    if (lasso) { lasso = null; $('#lasso').style.display = 'none'; }
+    if (lassoState?.active) {
+      // Suppress the click that would fire right after
+      lassoState.prevented = true;
+      setTimeout(() => { lassoState = null; }, 10);
+    } else {
+      lassoState = null;
+    }
+    $('#lasso').style.display = 'none';
   });
-  $('#grid').addEventListener('dblclick', e => { if (e.target.closest('.grid-check')) return; const item = e.target.closest('.grid-item'); if (item) handleOpen(item); });
+  // Suppress HTML5 dragstart while lasso is active
+  $('#grid').addEventListener('dragstart', e => {
+    if (lassoState?.active) { e.preventDefault(); return; }
+  }, true);
+  $('#grid').addEventListener('dblclick', e => { if (e.target.closest('.grid-check') || lassoState?.prevented) return; const item = e.target.closest('.grid-item'); if (item) handleOpen(item); });
 
   // Context menu
   $('#grid').addEventListener('contextmenu', e => {
