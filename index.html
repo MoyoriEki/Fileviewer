@@ -405,7 +405,7 @@ body {
     <input type="range" id="thumb-slider" min="80" max="320" value="160" title="サムネサイズ">
     <div class="tb-spacer"></div>
     <button class="tb-btn" id="btn-select-all" title="全選択">☑</button>
-    <button class="tb-btn" id="btn-undo" title="リネーム取消" style="display:none">↩</button>
+    <button class="tb-btn" id="btn-undo" title="元に戻す" style="display:none">↩</button>
     <button class="tb-btn" id="btn-theme" title="テーマ切替">◑</button>
     <button class="tb-btn" id="btn-refresh" title="更新">⟳</button>
     <button class="tb-btn" id="btn-disconnect" title="切断">⏻</button>
@@ -469,7 +469,7 @@ const App = {
   // Selection & reorder
   selected: new Set(),
   customOrders: {},    // { path: [names] }
-  undoHistory: null,
+  undoStack: [],  // [{type, label, ops:[{from,to}]}]
 };
 
 const THUMB_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','ppm']);
@@ -898,7 +898,9 @@ async function doCtxTree(action, target) {
   else if (action === 'tree-delete') {
     const name = baseName(path);
     if (!confirm(`フォルダ「${name}」を削除しますか？`)) return;
-    try { await App.storage.delete(path); toast('削除しました'); loadTree(); if (App.currentPath === path || App.currentPath.startsWith(path + '/')) navigate(parentPath(path)); else loadFolder(App.currentPath); } catch(e) { toast('削除エラー: ' + e.message); }
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const trashTo = TRASH_FOLDER + '/' + ts + '/' + name;
+    try { await App.storage.move(path, trashTo); pushUndo({ type: 'delete', label: `削除: ${name}`, ops: [{ from: trashTo, to: path }] }); toast('削除しました'); loadTree(); if (App.currentPath === path || App.currentPath.startsWith(path + '/')) navigate(parentPath(path)); else loadFolder(App.currentPath); } catch(e) { toast('削除エラー: ' + e.message); }
   }
 }
 
@@ -914,18 +916,89 @@ async function execRename() {
   const e = ext(entry.name), fin = (entry['.tag'] === 'file' && e) ? raw + '.' + e : raw;
   if (fin === entry.name) { $('#modal-rename').classList.remove('show'); return; }
   const rel = entryRelPath(entry), par = parentPath(rel), nr = par ? par + '/' + fin : fin;
-  try { await App.storage.move(rel, nr); toast('名前を変更しました'); $('#modal-rename').classList.remove('show'); loadFolder(App.currentPath); } catch(e) { toast('エラー: ' + e.message); }
+  try { await App.storage.move(rel, nr); pushUndo({ type: 'rename-single', label: `名前変更: ${entry.name}`, ops: [{ from: nr, to: rel }] }); toast('名前を変更しました'); $('#modal-rename').classList.remove('show'); loadFolder(App.currentPath); } catch(e) { toast('エラー: ' + e.message); }
 }
 
-// ── Delete ──
-async function deleteEntry(entry) { if (!confirm(`「${entry.name}」を削除しますか？`)) return; try { await App.storage.delete(entryRelPath(entry)); toast('削除しました'); loadFolder(App.currentPath); } catch(e) { toast('削除エラー: ' + e.message); } }
+// ── Undo Stack ──
+const TRASH_FOLDER = '.filer-trash';
+function pushUndo(op) {
+  App.undoStack.push(op);
+  if (App.undoStack.length > 20) App.undoStack.shift();
+  updateUndoBtn();
+}
+function updateUndoBtn() {
+  const btn = $('#btn-undo');
+  btn.style.display = App.undoStack.length ? '' : 'none';
+  const last = App.undoStack[App.undoStack.length - 1];
+  btn.title = last ? `元に戻す: ${last.label}` : '元に戻す';
+}
+async function undoLast() {
+  if (!App.undoStack.length) return;
+  const op = App.undoStack.pop();
+  updateUndoBtn();
+  toast(`元に戻しています: ${op.label}...`);
+  let fail = 0;
+  if (op.type === 'rename-batch') {
+    // 2-pass reverse
+    for (let i = 0; i < op.ops.length; i++) {
+      const par = parentPath(op.ops[i].from);
+      const tmp = (par ? par + '/' : '') + '__undo_' + i + '_' + baseName(op.ops[i].to);
+      try { await App.storage.move(op.ops[i].from, tmp); op.ops[i]._tmp = tmp; } catch(_) { fail++; op.ops[i]._tmp = null; }
+    }
+    for (let i = 0; i < op.ops.length; i++) {
+      if (!op.ops[i]._tmp) continue;
+      try { await App.storage.move(op.ops[i]._tmp, op.ops[i].to); } catch(_) { fail++; }
+    }
+  } else {
+    // move / delete (trash) / rename-single: just reverse each op
+    for (const mv of op.ops) {
+      try { await App.storage.move(mv.from, mv.to); } catch(_) { fail++; }
+    }
+  }
+  toast(fail ? `元に戻す完了（${fail}件エラー）` : '元に戻しました');
+  loadFolder(App.currentPath); loadTree();
+}
+
+// ── Delete (move to trash) ──
+async function trashItems(items) {
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const trashDir = TRASH_FOLDER + '/' + ts;
+  const ops = [];
+  let ok = 0, fail = 0;
+  for (const entry of items) {
+    const fromRel = entryRelPath(entry);
+    const toRel = trashDir + '/' + entry.name;
+    try { await App.storage.move(fromRel, toRel); ops.push({ from: toRel, to: fromRel }); ok++; } catch(_) { fail++; }
+  }
+  if (ops.length) pushUndo({ type: 'delete', label: `${ops.length}件削除`, ops });
+  toast(fail ? `${ok}件削除（${fail}件エラー）` : `${ok}件削除しました`);
+}
+
+async function deleteEntry(entry) {
+  if (!confirm(`「${entry.name}」を削除しますか？`)) return;
+  await trashItems([entry]);
+  loadFolder(App.currentPath); loadTree();
+}
 async function deleteMulti() {
   const sel = [...App.selected].map(i => App.entries[i]).filter(Boolean);
   if (!sel.length || !confirm(`${sel.length}件を削除しますか？`)) return;
+  await trashItems(sel);
+  App.selected.clear(); updateSelBadge();
+  loadFolder(App.currentPath); loadTree();
+}
+
+// ── Move with undo tracking ──
+async function moveItemsWithUndo(items, destPath, label) {
+  const ops = [];
   let ok = 0, fail = 0;
-  for (const e of sel) { try { await App.storage.delete(entryRelPath(e)); ok++; } catch(_) { fail++; } }
-  toast(fail ? `${ok}件削除（${fail}件エラー）` : `${ok}件削除しました`);
-  loadFolder(App.currentPath);
+  for (const it of items) {
+    const fromRel = entryRelPath(it);
+    const toRel = destPath ? destPath + '/' + it.name : it.name;
+    if (fromRel === toRel) continue;
+    try { await App.storage.move(fromRel, toRel); ops.push({ from: toRel, to: fromRel }); ok++; } catch(_) { fail++; }
+  }
+  if (ops.length) pushUndo({ type: 'move', label: label || `${ops.length}件移動`, ops });
+  toast(fail ? `${ok}件移動（${fail}件エラー）` : `${ok}件移動しました`);
 }
 
 // ── New Folder ──
@@ -1060,18 +1133,20 @@ async function executePicker() {
   toast(`${label}中...`);
 
   let ok = 0, fail = 0;
+  const moveOps = [];
   for (const entry of pickerEntries) {
     const fromRel = entryRelPath(entry);
     const toRel = destPath ? destPath + '/' + entry.name : entry.name;
     if (fromRel === toRel) continue;
     try {
-      if (pickerMode === 'move') await App.storage.move(fromRel, toRel);
+      if (pickerMode === 'move') { await App.storage.move(fromRel, toRel); moveOps.push({ from: toRel, to: fromRel }); }
       else await dropboxCopy(fromRel, toRel);
       ok++;
     } catch(_) { fail++; }
   }
+  if (pickerMode === 'move' && moveOps.length) pushUndo({ type: 'move', label: `${moveOps.length}件移動`, ops: moveOps });
   toast(fail ? `${ok}件${label}（${fail}件エラー）` : `${ok}件${label}しました`);
-  loadFolder(App.currentPath);
+  loadFolder(App.currentPath); loadTree();
 }
 
 // ── Download ──
@@ -1187,19 +1262,12 @@ async function executeBatchRename() {
     const par = parentPath(renames[i]._tmp), fin = (par ? par + '/' : '') + renames[i].newName;
     try { await App.storage.move(renames[i]._tmp, fin); undo[i].from = fin; } catch(_) { fail++; }
   }
-  App.undoHistory = { entries: undo.filter(u => u.from) }; updateUndoBtn();
+  const undoOps = undo.filter(u => u.from).map(u => ({ from: u.from, to: u.origRel }));
+  if (undoOps.length) pushUndo({ type: 'rename-batch', label: `${undoOps.length}件リネーム`, ops: undoOps });
   toast(fail ? `完了（${fail}件エラー）` : `${renames.length}件リネーム完了`);
   loadFolder(App.currentPath);
 }
-function updateUndoBtn() { $('#btn-undo').style.display = (App.undoHistory?.entries?.length) ? '' : 'none'; }
-async function undoRename() {
-  const ents = App.undoHistory?.entries; if (!ents?.length || !confirm(`${ents.length}件のリネームを元に戻しますか？`)) return;
-  toast('元に戻しています...'); let fail = 0;
-  for (let i = 0; i < ents.length; i++) { const par = parentPath(ents[i].from), tmp = (par?par+'/':'') + '__undo_'+i+'_'+baseName(ents[i].origRel); try { await App.storage.move(ents[i].from, tmp); ents[i]._tmp = tmp; } catch(_) { fail++; ents[i]._tmp = null; } }
-  for (let i = 0; i < ents.length; i++) { if (!ents[i]._tmp) continue; try { await App.storage.move(ents[i]._tmp, ents[i].origRel); } catch(_) { fail++; } }
-  App.undoHistory = null; updateUndoBtn();
-  toast(fail ? `元に戻す完了（${fail}件エラー）` : '元に戻しました'); loadFolder(App.currentPath);
-}
+// (undo functions moved to Undo Stack section above)
 
 // ── D&D Reorder (always-on for files) ──
 let dragSrcIdx = null;
@@ -1247,11 +1315,7 @@ function initDragReorder() {
       });
       if (invalid) { toast('移動先が無効です'); return; }
       toast('移動中...');
-      let ok = 0, fail = 0;
-      for (const it of items) {
-        try { await App.storage.move(entryRelPath(it), destPath + '/' + it.name); ok++; } catch(_) { fail++; }
-      }
-      toast(fail ? `${ok}件移動（${fail}件エラー）` : `${ok}件移動しました`);
+      await moveItemsWithUndo(items, destPath);
       App.selected.clear(); updateSelBadge();
       loadFolder(App.currentPath); loadTree();
       return;
@@ -1331,9 +1395,8 @@ function initDragReorder() {
             const destPath = entryRelPath(destEntry);
             const invalid = items.some(it => it === destEntry || (it['.tag']==='folder' && destPath.startsWith(entryRelPath(it)+'/')));
             if (!invalid) {
-              toast('移動中...'); let ok=0, fail=0;
-              for (const it of items) { try { await App.storage.move(entryRelPath(it), destPath+'/'+it.name); ok++; } catch(_) { fail++; } }
-              toast(fail ? `${ok}件移動（${fail}件エラー）` : `${ok}件移動しました`);
+              toast('移動中...');
+              await moveItemsWithUndo(items, destPath);
               App.selected.clear(); updateSelBadge(); loadFolder(App.currentPath); loadTree();
             } else toast('移動先が無効です');
             handled = true;
@@ -1431,7 +1494,7 @@ function setupEvents() {
   $('#btn-disconnect').onclick = () => App.storage.disconnect();
   $('#btn-sidebar').onclick = () => { const sb = $('#sidebar'), mob = innerWidth <= 700; if (mob) sb.classList.toggle('mobile-open'); else { sb.classList.toggle('hidden'); saveSetting('sidebarHidden', sb.classList.contains('hidden')); } };
   $('#btn-select-all').onclick = selectAll;
-  $('#btn-undo').onclick = undoRename;
+  $('#btn-undo').onclick = undoLast;
   $('#btn-theme').onclick = () => {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
@@ -1445,8 +1508,7 @@ function setupEvents() {
   $('#btn-add-fav').onclick = () => addFavorite(App.currentPath);
   $('#fav-list').addEventListener('click', e => { const rm = e.target.closest('.fav-remove'); if (rm) { removeFavorite(parseInt(rm.dataset.index)); return; } const item = e.target.closest('.fav-item'); if (item) { navigate(item.dataset.path); $('#sidebar').classList.remove('mobile-open'); } });
 
-  // Grid click — desktop: dblclick opens, click selects. Mobile: tap opens, checkbox selects.
-  const isTouchDevice = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  // Grid click — single click/tap selects, double click/tap opens
   let lastTapT = 0, lastTapEl = null;
   $('#grid').addEventListener('click', e => {
     if (lassoState?.prevented) return;
@@ -1456,17 +1518,10 @@ function setupEvents() {
 
     const item = e.target.closest('.grid-item'); if (!item) return;
     const idx = parseInt(item.dataset.index);
-
-    if (isTouchDevice()) {
-      // Mobile: single tap opens folder/image
-      handleOpen(item);
-    } else {
-      // Desktop: double-click opens, single click selects
-      const now = Date.now();
-      if (now - lastTapT < 350 && lastTapEl === item) { handleOpen(item); lastTapT = 0; return; }
-      lastTapT = now; lastTapEl = item;
-      toggleSelect(idx, e.ctrlKey || e.metaKey, e.shiftKey);
-    }
+    const now = Date.now();
+    if (now - lastTapT < 350 && lastTapEl === item) { handleOpen(item); lastTapT = 0; return; }
+    lastTapT = now; lastTapEl = item;
+    toggleSelect(idx, e.ctrlKey || e.metaKey, e.shiftKey);
   });
 
   // Rubber-band (lasso) selection — starts anywhere in main, threshold 5px
@@ -1653,13 +1708,7 @@ function setupEvents() {
     });
     if (invalid) { toast('移動先が無効です'); return; }
     toast('移動中...');
-    let ok = 0, fail = 0;
-    for (const it of items) {
-      const fromRel = entryRelPath(it);
-      const toRel = destPath ? destPath + '/' + it.name : it.name;
-      try { await App.storage.move(fromRel, toRel); ok++; } catch(_) { fail++; }
-    }
-    toast(fail ? `${ok}件移動（${fail}件エラー）` : `${ok}件移動しました`);
+    await moveItemsWithUndo(items, destPath);
     App.selected.clear(); updateSelBadge();
     loadFolder(App.currentPath); loadTree();
   });
@@ -1673,7 +1722,7 @@ function setupEvents() {
     if (e.key==='Backspace') { e.preventDefault(); if (App.currentPath) navigate(parentPath(App.currentPath)); }
     if (e.key==='a' && (e.ctrlKey||e.metaKey)) { e.preventDefault(); selectAll(); }
     if (e.key==='Escape') clearSelection();
-    if (e.key==='z' && (e.ctrlKey||e.metaKey) && App.undoHistory) { e.preventDefault(); undoRename(); }
+    if (e.key==='z' && (e.ctrlKey||e.metaKey) && App.undoStack.length) { e.preventDefault(); undoLast(); }
   });
 
   // Viewer swipe / mouse / wheel
