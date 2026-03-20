@@ -170,24 +170,19 @@ body {
 }
 .grid-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
-/* Folder preview: 2x2 mosaic */
+/* Folder preview: single representative image + badge overlay */
 .folder-preview {
-  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
-  width: 100%; height: 100%; gap: 1px; background: var(--border);
-  border-radius: 4px; overflow: hidden;
+  width: 100%; height: 100%; position: relative;
 }
-.folder-preview .fp-cell {
-  background: var(--bg); display: flex; align-items: center; justify-content: center;
-  overflow: hidden;
+.folder-preview img {
+  width: 100%; height: 100%; object-fit: cover; border-radius: 4px;
 }
-.folder-preview .fp-cell img { width: 100%; height: 100%; object-fit: cover; }
-.folder-preview .fp-cell .fp-placeholder {
-  color: var(--text-muted); font-size: calc(var(--thumb-size) * 0.12px); opacity: 0.3;
-}
-.folder-preview .fp-icon {
-  position: absolute; bottom: 2px; right: 3px;
-  font-size: 12px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
-  z-index: 2; pointer-events: none;
+.folder-badge {
+  position: absolute; bottom: 3px; right: 3px;
+  width: 22px; height: 22px; border-radius: 5px;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; pointer-events: none;
 }
 
 .grid-thumb .folder-icon { font-size: calc(var(--thumb-size) * 0.35px); color: var(--accent); opacity: 0.7; }
@@ -838,29 +833,16 @@ async function loadOneFolderPreview(entry, idx, gen, folderRel) {
     const images = children.filter(c => c['.tag'] === 'file' && THUMB_EXT.has(ext(c.name)));
     if (!images.length) return;
 
-    const toFetch = images.slice(0, 4);
-    const urls = [];
-
-    for (const img of toFetch) {
+    const img = images[0];
+    try {
+      const blob = await tqRun(() => fetchThumbnail(img.path_display || img.path_lower, 'w256h256'));
       if (gen !== App.navGen) return;
-      try {
-        const blob = await tqRun(() => fetchThumbnail(img.path_display || img.path_lower, 'w128h128'));
-        urls.push(URL.createObjectURL(blob));
-      } catch(_) {}
-    }
-
-    if (urls.length && gen === App.navGen) {
-      // Cache as blob arrays for persistence
-      const bufs = [];
-      for (const url of urls) {
-        try {
-          const r = await fetch(url);
-          bufs.push(await r.arrayBuffer());
-        } catch(_) {}
-      }
-      if (bufs.length) IDB.put('folderPreviews', entry.path_lower, bufs);
-      renderFolderPreview(idx, gen, urls);
-    }
+      const url = URL.createObjectURL(blob);
+      // Cache
+      const buf = await blob.clone ? (await (await fetch(url)).arrayBuffer()) : null;
+      if (buf) IDB.put('folderPreviews', entry.path_lower, [buf]);
+      renderFolderPreview(idx, gen, [url]);
+    } catch(_) {}
   } catch(_) {}
 }
 
@@ -868,22 +850,10 @@ function renderFolderPreview(idx, gen, urlsOrBufs) {
   if (gen !== App.navGen) return;
   const el = document.getElementById('thumb-' + idx);
   if (!el) return;
-
-  // Convert ArrayBuffers to URLs if needed
-  const urls = urlsOrBufs.map(u => {
-    if (typeof u === 'string') return u;
-    return URL.createObjectURL(new Blob([u], { type: 'image/jpeg' }));
-  });
-
-  let cells = '';
-  for (let i = 0; i < 4; i++) {
-    if (urls[i]) {
-      cells += `<div class="fp-cell"><img src="${urls[i]}" alt=""></div>`;
-    } else {
-      cells += `<div class="fp-cell"><span class="fp-placeholder">·</span></div>`;
-    }
-  }
-  el.innerHTML = `<div class="folder-preview">${cells}</div><span class="fp-icon">📁</span>`;
+  const src = typeof urlsOrBufs[0] === 'string'
+    ? urlsOrBufs[0]
+    : URL.createObjectURL(new Blob([urlsOrBufs[0]], { type: 'image/jpeg' }));
+  el.innerHTML = `<div class="folder-preview"><img src="${src}" alt=""><div class="folder-badge">📁</div></div>`;
 }
 
 // ════════════════════════════════════════
