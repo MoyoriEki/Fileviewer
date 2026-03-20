@@ -144,6 +144,26 @@ body {
 .grid-item:hover { background: var(--bg-hover); }
 .grid-item.selected { background: var(--accent-dim); outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
 .grid-item.dragging { opacity: 0.25; }
+
+/* Checkbox */
+.grid-check {
+  position: absolute; top: 6px; left: 6px; z-index: 3;
+  width: 20px; height: 20px; border-radius: 4px;
+  border: 1.5px solid rgba(255,255,255,0.35);
+  background: rgba(0,0,0,0.35); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.1s; cursor: pointer;
+  font-size: 13px; color: #fff; line-height: 1;
+}
+.grid-item:hover .grid-check, .grid-item.selected .grid-check { opacity: 1; }
+.grid-item.selected .grid-check { background: var(--accent); border-color: var(--accent); }
+
+/* Rubber-band selection */
+#lasso {
+  position: fixed; border: 1.5px solid var(--accent);
+  background: rgba(110,168,254,0.08); z-index: 15;
+  pointer-events: none; display: none;
+}
 .grid-item.drag-over-before::before,
 .grid-item.drag-over-after::after {
   content: ''; position: absolute; top: 4px; bottom: 4px; width: 3px;
@@ -312,6 +332,7 @@ body {
 </div></div>
 
 <div id="toast"></div>
+<div id="lasso"></div>
 
 <script>
 'use strict';
@@ -408,6 +429,7 @@ async function loadFolder(path) {
     const entries = await App.storage.list(path || '');
     if (gen !== App.navGen) return;
     App.entries = sortEntries(entries);
+    App.entries = await applyCustomOrder(App.entries);
     App.selected.clear(); updateSelBadge();
     renderGrid(gen);
   } catch(e) { if (gen === App.navGen) grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">⚠</div><div>読み込みエラー</div></div>'; }
@@ -444,6 +466,7 @@ function renderGrid(gen) {
     const isF = entry['.tag'] === 'folder', e = ext(entry.name), sel = App.selected.has(idx);
     const draggable = !isF ? ' draggable="true"' : '';
     return `<div class="grid-item${sel ? ' selected' : ''}" data-index="${idx}" data-tag="${entry['.tag']}"${draggable}>
+      <div class="grid-check" data-check="${idx}">${sel ? '✓' : ''}</div>
       <div class="grid-thumb" id="thumb-${idx}">${isF ? '<span class="folder-icon">📁</span>' : (THUMB_EXT.has(e) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">📄</span>')}</div>
       <div class="grid-name" title="${entry.name}">${entry.name}</div></div>`;
   }).join('');
@@ -468,8 +491,10 @@ function selectAll() { App.entries.forEach((_, i) => App.selected.add(i)); updat
 function clearSelection() { App.selected.clear(); updateSelectionUI(); }
 function updateSelectionUI() {
   document.querySelectorAll('.grid-item').forEach(el => {
-    const idx = parseInt(el.dataset.index);
-    el.classList.toggle('selected', App.selected.has(idx));
+    const idx = parseInt(el.dataset.index), sel = App.selected.has(idx);
+    el.classList.toggle('selected', sel);
+    const chk = el.querySelector('.grid-check');
+    if (chk) chk.textContent = sel ? '✓' : '';
   });
   updateSelBadge();
 }
@@ -683,6 +708,7 @@ function initDragReorder() {
     tLP = setTimeout(() => {
       tSrc = parseInt(item.dataset.index);
       if (!App.selected.has(tSrc)) { App.selected.clear(); App.selected.add(tSrc); updateSelectionUI(); }
+      App._touchDragging = true;
       item.classList.add('dragging');
       tClone = item.cloneNode(true); tClone.className = 'touch-drag-clone';
       tClone.style.width = item.offsetWidth + 'px'; tClone.style.height = item.offsetHeight + 'px';
@@ -703,31 +729,54 @@ function initDragReorder() {
       if (under) { const di = parseInt(under.dataset.index), r = under.getBoundingClientRect(); if (di !== tSrc) reorderEntries(di, e.changedTouches[0].clientX < r.left + r.width/2); }
       tClone.remove(); tClone = null;
       document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after'));
-      tSrc = null;
+      tSrc = null; App._touchDragging = false;
     }
   });
   function posC(t) { if (tClone) { tClone.style.left = (t.clientX-40)+'px'; tClone.style.top = (t.clientY-40)+'px'; } }
 }
 
 function reorderEntries(dropIdx, before) {
-  // Get selected indices (files only), sorted
   const selIndices = [...App.selected].filter(i => App.entries[i]?.['.tag'] === 'file').sort((a,b) => a - b);
   if (!selIndices.length) return;
-  // Remove dragged items
+  // If dropping onto a selected item, do nothing
+  if (selIndices.includes(dropIdx)) return;
   const dragged = selIndices.map(i => App.entries[i]);
-  const remaining = App.entries.filter((_, i) => !selIndices.includes(i));
-  // Find insertion point in remaining array
   const dropEntry = App.entries[dropIdx];
+  const remaining = App.entries.filter((_, i) => !selIndices.includes(i));
   let insertAt = remaining.indexOf(dropEntry);
   if (insertAt === -1) insertAt = remaining.length;
   if (!before) insertAt++;
-  // Insert
   remaining.splice(insertAt, 0, ...dragged);
   App.entries = remaining;
-  // Update selection to new indices
   App.selected.clear();
   dragged.forEach(d => { const ni = App.entries.indexOf(d); if (ni >= 0) App.selected.add(ni); });
+  saveCustomOrder();
   renderGrid(App.navGen);
+}
+
+// ── Custom order persistence ──
+function customOrderKey() { return 'order:' + (App.currentPath || '/'); }
+function saveCustomOrder() {
+  // Save order as list of entry names
+  const names = App.entries.map(e => e.name);
+  IDB.put('settings', customOrderKey(), names);
+}
+function applyCustomOrder(entries) {
+  // Attempt to apply saved order; returns reordered entries or original
+  return new Promise(async (resolve) => {
+    const saved = await IDB.get('settings', customOrderKey());
+    if (!saved || !saved.length) { resolve(entries); return; }
+    const byName = new Map();
+    entries.forEach(e => byName.set(e.name, e));
+    const ordered = [];
+    const used = new Set();
+    for (const name of saved) {
+      if (byName.has(name) && !used.has(name)) { ordered.push(byName.get(name)); used.add(name); }
+    }
+    // Append any new entries not in saved order
+    for (const e of entries) { if (!used.has(e.name)) ordered.push(e); }
+    resolve(ordered);
+  });
 }
 
 // ── Image Viewer ──
@@ -770,7 +819,7 @@ function setupEvents() {
   $('#btn-undo').onclick = undoRename;
 
   $('#breadcrumb').addEventListener('click', e => { const item = e.target.closest('.bc-item'); if (item && !item.classList.contains('current')) navigate(item.dataset.path); });
-  $('#sort-select').onchange = e => { App.sortMode = e.target.value; IDB.put('settings','sortMode', App.sortMode); App.entries = sortEntries(App.entries); renderGrid(App.navGen); };
+  $('#sort-select').onchange = e => { App.sortMode = e.target.value; IDB.put('settings','sortMode', App.sortMode); IDB.put('settings', customOrderKey(), null); App.entries = sortEntries(App.entries); renderGrid(App.navGen); };
   $('#thumb-slider').oninput = e => { App.thumbSize = parseInt(e.target.value); document.documentElement.style.setProperty('--thumb-size', App.thumbSize); IDB.put('settings','thumbSize', App.thumbSize); };
   $('#btn-add-fav').onclick = () => addFavorite(App.currentPath);
   $('#fav-list').addEventListener('click', e => { const rm = e.target.closest('.fav-remove'); if (rm) { removeFavorite(parseInt(rm.dataset.index)); return; } const item = e.target.closest('.fav-item'); if (item) { navigate(item.dataset.path); $('#sidebar').classList.remove('mobile-open'); } });
@@ -778,14 +827,50 @@ function setupEvents() {
   // Grid click: select + double-click open
   let lastTapT = 0, lastTapEl = null;
   $('#grid').addEventListener('click', e => {
+    // Checkbox click — toggle without opening
+    const chk = e.target.closest('.grid-check');
+    if (chk) { e.stopPropagation(); const idx = parseInt(chk.dataset.check); toggleSelect(idx, true, false); return; }
+
     const item = e.target.closest('.grid-item'); if (!item) { clearSelection(); return; }
     const idx = parseInt(item.dataset.index), now = Date.now();
-    // Double tap / double click
     if (now - lastTapT < 350 && lastTapEl === item) { handleOpen(item); lastTapT = 0; return; }
     lastTapT = now; lastTapEl = item;
     toggleSelect(idx, e.ctrlKey || e.metaKey, e.shiftKey);
   });
-  $('#grid').addEventListener('dblclick', e => { const item = e.target.closest('.grid-item'); if (item) handleOpen(item); });
+
+  // Rubber-band (lasso) selection
+  let lasso = null;
+  $('#main').addEventListener('mousedown', e => {
+    if (e.button !== 0 || e.target.closest('.grid-item') || e.target.closest('.grid-check')) return;
+    const mainRect = $('#main').getBoundingClientRect();
+    lasso = { startX: e.clientX, startY: e.clientY, scrollTop: $('#main').scrollTop };
+    const el = $('#lasso');
+    el.style.left = e.clientX + 'px'; el.style.top = e.clientY + 'px';
+    el.style.width = '0'; el.style.height = '0';
+    el.style.display = 'block';
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { App.selected.clear(); updateSelectionUI(); }
+  });
+  document.addEventListener('mousemove', e => {
+    if (!lasso) return;
+    const el = $('#lasso');
+    const x1 = Math.min(lasso.startX, e.clientX), y1 = Math.min(lasso.startY, e.clientY);
+    const x2 = Math.max(lasso.startX, e.clientX), y2 = Math.max(lasso.startY, e.clientY);
+    el.style.left = x1 + 'px'; el.style.top = y1 + 'px';
+    el.style.width = (x2 - x1) + 'px'; el.style.height = (y2 - y1) + 'px';
+    // Hit test grid items
+    const lassoRect = { left: x1, top: y1, right: x2, bottom: y2 };
+    document.querySelectorAll('.grid-item').forEach(item => {
+      const r = item.getBoundingClientRect();
+      const idx = parseInt(item.dataset.index);
+      const hit = !(r.right < lassoRect.left || r.left > lassoRect.right || r.bottom < lassoRect.top || r.top > lassoRect.bottom);
+      if (hit) App.selected.add(idx); else if (!e.ctrlKey && !e.metaKey) App.selected.delete(idx);
+    });
+    updateSelectionUI();
+  });
+  document.addEventListener('mouseup', () => {
+    if (lasso) { lasso = null; $('#lasso').style.display = 'none'; }
+  });
+  $('#grid').addEventListener('dblclick', e => { if (e.target.closest('.grid-check')) return; const item = e.target.closest('.grid-item'); if (item) handleOpen(item); });
 
   // Context menu
   $('#grid').addEventListener('contextmenu', e => {
