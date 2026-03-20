@@ -1410,7 +1410,7 @@ function setupEvents() {
   $('#main').addEventListener('mousedown', e => {
     if (e.button !== 0) return;
     // Don't lasso from checkbox or during viewer
-    if (e.target.closest('.grid-check') || App.viewerVisible) return;
+    if (e.target.closest('.grid-check') || e.target.closest('.grid-item') || App.viewerVisible) return;
     lassoState = { startX: e.clientX, startY: e.clientY, active: false, prevented: false, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey };
   });
   document.addEventListener('mousemove', e => {
