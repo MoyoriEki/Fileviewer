@@ -110,12 +110,8 @@ body {
   width: var(--sidebar-w); min-width: var(--sidebar-w);
   background: var(--bg-raised); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
-  transition: margin-left 0.15s, opacity 0.15s;
 }
-#sidebar.hidden {
-  margin-left: calc(var(--sidebar-w) * -1);
-  min-width: 0; width: 0; opacity: 0; pointer-events: none; border: none;
-}
+#sidebar.hidden { display: none; }
 #sidebar-header {
   padding: 10px 12px 6px; font-size: 11px; font-weight: 500;
   color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase;
@@ -170,19 +166,26 @@ body {
 }
 .grid-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
-/* Folder preview: single representative image + badge overlay */
+/* Folder preview: 2x2 mosaic + badge overlay */
 .folder-preview {
-  width: 100%; height: 100%; position: relative;
+  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+  width: 100%; height: 100%; gap: 1px; background: var(--border);
+  border-radius: 4px; overflow: hidden; position: relative;
 }
-.folder-preview img {
-  width: 100%; height: 100%; object-fit: cover; border-radius: 4px;
+.folder-preview .fp-cell {
+  background: var(--bg); display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.folder-preview .fp-cell img { width: 100%; height: 100%; object-fit: cover; }
+.folder-preview .fp-cell .fp-empty {
+  color: var(--text-muted); font-size: 10px; opacity: 0.2;
 }
 .folder-badge {
-  position: absolute; bottom: 3px; right: 3px;
-  width: 22px; height: 22px; border-radius: 5px;
+  position: absolute; bottom: 3px; right: 3px; z-index: 2;
+  width: 30px; height: 30px; border-radius: 6px;
   background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center;
-  font-size: 13px; pointer-events: none;
+  font-size: 18px; pointer-events: none;
 }
 
 .grid-thumb .folder-icon { font-size: calc(var(--thumb-size) * 0.35px); color: var(--accent); opacity: 0.7; }
@@ -322,12 +325,11 @@ body {
 @media (max-width: 700px) {
   #sidebar { display: none; }
   #sidebar.mobile-open {
-    display: flex; position: fixed; top: var(--toolbar-h); left: 0; bottom: 0;
+    display: flex !important; position: fixed; top: var(--toolbar-h); left: 0; bottom: 0;
     z-index: 50; box-shadow: 4px 0 20px rgba(0,0,0,0.5);
-    margin-left: 0; width: var(--sidebar-w); min-width: var(--sidebar-w);
-    opacity: 1; pointer-events: auto; border-right: 1px solid var(--border);
+    width: var(--sidebar-w); min-width: var(--sidebar-w);
+    border-right: 1px solid var(--border);
   }
-  #sidebar.hidden { display: none; }
   #main { padding: 6px; }
 }
 </style>
@@ -833,16 +835,23 @@ async function loadOneFolderPreview(entry, idx, gen, folderRel) {
     const images = children.filter(c => c['.tag'] === 'file' && THUMB_EXT.has(ext(c.name)));
     if (!images.length) return;
 
-    const img = images[0];
-    try {
-      const blob = await tqRun(() => fetchThumbnail(img.path_display || img.path_lower, 'w256h256'));
+    const toFetch = images.slice(0, 4);
+    const urls = [];
+    for (const img of toFetch) {
       if (gen !== App.navGen) return;
-      const url = URL.createObjectURL(blob);
-      // Cache
-      const buf = await blob.clone ? (await (await fetch(url)).arrayBuffer()) : null;
-      if (buf) IDB.put('folderPreviews', entry.path_lower, [buf]);
-      renderFolderPreview(idx, gen, [url]);
-    } catch(_) {}
+      try {
+        const blob = await tqRun(() => fetchThumbnail(img.path_display || img.path_lower, 'w128h128'));
+        urls.push(URL.createObjectURL(blob));
+      } catch(_) {}
+    }
+    if (urls.length && gen === App.navGen) {
+      const bufs = [];
+      for (const url of urls) {
+        try { bufs.push(await (await fetch(url)).arrayBuffer()); } catch(_) {}
+      }
+      if (bufs.length) IDB.put('folderPreviews', entry.path_lower, bufs);
+      renderFolderPreview(idx, gen, urls);
+    }
   } catch(_) {}
 }
 
@@ -850,10 +859,16 @@ function renderFolderPreview(idx, gen, urlsOrBufs) {
   if (gen !== App.navGen) return;
   const el = document.getElementById('thumb-' + idx);
   if (!el) return;
-  const src = typeof urlsOrBufs[0] === 'string'
-    ? urlsOrBufs[0]
-    : URL.createObjectURL(new Blob([urlsOrBufs[0]], { type: 'image/jpeg' }));
-  el.innerHTML = `<div class="folder-preview"><img src="${src}" alt=""><div class="folder-badge">📁</div></div>`;
+  const urls = urlsOrBufs.map(u =>
+    typeof u === 'string' ? u : URL.createObjectURL(new Blob([u], { type: 'image/jpeg' }))
+  );
+  let cells = '';
+  for (let i = 0; i < 4; i++) {
+    cells += urls[i]
+      ? `<div class="fp-cell"><img src="${urls[i]}" alt=""></div>`
+      : `<div class="fp-cell"><span class="fp-empty">·</span></div>`;
+  }
+  el.innerHTML = `<div class="folder-preview">${cells}<div class="folder-badge">📁</div></div>`;
 }
 
 // ════════════════════════════════════════
