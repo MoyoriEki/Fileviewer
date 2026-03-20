@@ -12,6 +12,13 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%23111114'/%3E%3Cpath d='M128 160h256v32H128zm0 80h256v32H128zm0 80h192v32H128z' fill='%236ea8fe'/%3E%3Crect x='320' y='280' width='80' height='80' rx='8' fill='%236ea8fe' opacity='.4'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script>
+// Apply theme before first paint
+(function() {
+  var t = localStorage.getItem('dbxfiler_theme') || 'dark';
+  document.documentElement.dataset.theme = t;
+  var m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.content = t === 'dark' ? '#111114' : '#f5f5f7';
+})();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
@@ -45,6 +52,49 @@ if ('serviceWorker' in navigator) {
   --sb-text: #d8d8e0;
   --sb-border: #28282e;
 }
+
+[data-theme="light"] {
+  --bg: #f5f5f7;
+  --bg-raised: #ffffff;
+  --bg-hover: #ebebee;
+  --bg-selected: #dde4f0;
+  --text: #1d1d1f;
+  --text-muted: #86868b;
+  --accent: #2563eb;
+  --accent-dim: rgba(37,99,235,0.1);
+  --accent-strong: #1d4ed8;
+  --border: #d2d2d7;
+  --border-light: #c7c7cc;
+  --danger: #dc3545;
+  --danger-dim: rgba(220,53,69,0.1);
+  --sb-accent: #2563eb;
+  --sb-bg: #ffffff;
+  --sb-text: #1d1d1f;
+  --sb-border: #d2d2d7;
+}
+
+[data-theme="light"] .grid-check {
+  border-color: rgba(0,0,0,0.25);
+  background: rgba(255,255,255,0.7);
+}
+[data-theme="light"] .grid-item.selected .grid-check {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+[data-theme="light"] .folder-badge {
+  background: rgba(255,255,255,0.75);
+}
+[data-theme="light"] #viewer { background: #fff; }
+[data-theme="light"] #viewer-img.loading { opacity: 0; }
+[data-theme="light"] #viewer-topbar { background: linear-gradient(rgba(255,255,255,0.85), transparent); }
+[data-theme="light"] #viewer-bottombar { background: linear-gradient(transparent, rgba(255,255,255,0.85)); }
+[data-theme="light"] #viewer-title { color: #1d1d1f; }
+[data-theme="light"] .viewer-btn { background: rgba(0,0,0,0.06); color: #1d1d1f; }
+[data-theme="light"] .viewer-btn:hover { background: rgba(0,0,0,0.1); }
+[data-theme="light"] #viewer-page-label { color: rgba(0,0,0,0.5); }
+[data-theme="light"] .tap-zone { cursor: pointer; }
+[data-theme="light"] .touch-drag-clone { background: #fff; border-color: var(--accent); }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c7c7cc; }
+[data-theme="light"] #toast { background: #fff; border-color: var(--border); color: #1d1d1f; }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; touch-action: manipulation; }
@@ -322,6 +372,7 @@ body {
     <div class="tb-spacer"></div>
     <button class="tb-btn" id="btn-select-all" title="全選択">☑</button>
     <button class="tb-btn" id="btn-undo" title="リネーム取消" style="display:none">↩</button>
+    <button class="tb-btn" id="btn-theme" title="テーマ切替">◑</button>
     <button class="tb-btn" id="btn-refresh" title="更新">⟳</button>
     <button class="tb-btn" id="btn-disconnect" title="切断">⏻</button>
   </div>
@@ -501,6 +552,10 @@ function saveSetting(key, value) {
 // Init
 // ════════════════════════════════════════
 async function init() {
+  // Theme: local only, not synced
+  const savedTheme = localStorage.getItem('dbxfiler_theme') || 'dark';
+  document.documentElement.dataset.theme = savedTheme;
+
   await IDB.open();
 
   // Load IDB settings for instant display (before Dropbox connects)
@@ -952,6 +1007,12 @@ function setupEvents() {
   $('#btn-sidebar').onclick = () => { const sb = $('#sidebar'), mob = innerWidth <= 700; if (mob) sb.classList.toggle('mobile-open'); else { sb.classList.toggle('hidden'); saveSetting('sidebarHidden', sb.classList.contains('hidden')); } };
   $('#btn-select-all').onclick = selectAll;
   $('#btn-undo').onclick = undoRename;
+  $('#btn-theme').onclick = () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem('dbxfiler_theme', next);
+    document.querySelector('meta[name="theme-color"]').content = next === 'dark' ? '#111114' : '#f5f5f7';
+  };
 
   $('#breadcrumb').addEventListener('click', e => { const item = e.target.closest('.bc-item'); if (item && !item.classList.contains('current')) navigate(item.dataset.path); });
   $('#sort-select').onchange = e => { App.sortMode = e.target.value; saveSetting('sortMode', App.sortMode); if (App.customOrders) { delete App.customOrders[customOrderKey()]; saveSetting('customOrders', App.customOrders); } App.entries = sortEntries(App.entries); renderGrid(App.navGen); };
