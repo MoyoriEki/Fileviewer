@@ -46,7 +46,6 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
 
-/* ── Connection ────────────────────────────────────────── */
 #connection-screen {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   height: 100dvh; gap: 20px; padding: 24px; text-align: center;
@@ -54,7 +53,6 @@ body {
 #connection-screen h1 { font-size: 22px; font-weight: 600; }
 #connection-screen p { color: var(--text-muted); max-width: 360px; font-size: 13px; }
 
-/* ── App ───────────────────────────────────────────────── */
 #app { display: none; height: 100dvh; flex-direction: column; }
 #app.active { display: flex; }
 
@@ -73,18 +71,15 @@ body {
 }
 .tb-btn:hover { background: var(--bg-hover); }
 .tb-btn.disabled { opacity: 0.3; pointer-events: none; }
+.tb-btn.active { background: var(--accent-dim); color: var(--accent); }
 
 #breadcrumb {
   display: flex; align-items: center; gap: 2px;
   flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden;
-  padding: 0 4px; font-size: 12.5px; white-space: nowrap;
-  scrollbar-width: none;
+  padding: 0 4px; font-size: 12.5px; white-space: nowrap; scrollbar-width: none;
 }
 #breadcrumb::-webkit-scrollbar { display: none; }
-.bc-item {
-  padding: 3px 7px; border-radius: 4px; cursor: pointer;
-  color: var(--text-muted); transition: all 0.1s; flex-shrink: 0;
-}
+.bc-item { padding: 3px 7px; border-radius: 4px; cursor: pointer; color: var(--text-muted); flex-shrink: 0; }
 .bc-item:hover { background: var(--bg-hover); color: var(--text); }
 .bc-item.current { color: var(--text); font-weight: 500; cursor: default; }
 .bc-item.current:hover { background: transparent; }
@@ -95,12 +90,18 @@ body {
 .tb-spacer { width: 1px; height: 20px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
 
 #sort-select {
-  background: transparent; border: 1px solid var(--border);
-  border-radius: var(--radius); color: var(--text-muted);
-  font-family: inherit; font-size: 11.5px; padding: 3px 6px;
+  background: transparent; border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text-muted); font-family: inherit; font-size: 11.5px; padding: 3px 6px;
   cursor: pointer; outline: none; flex-shrink: 0;
 }
 #sort-select option { background: var(--bg-raised); color: var(--text); }
+
+/* Selection count badge */
+#sel-badge {
+  display: none; padding: 2px 10px; border-radius: 12px; font-size: 11.5px;
+  background: var(--accent-dim); color: var(--accent); font-weight: 500; flex-shrink: 0;
+}
+#sel-badge.show { display: block; }
 
 /* ── Body ──────────────────────────────────────────────── */
 #body { display: flex; flex: 1; overflow: hidden; }
@@ -112,34 +113,18 @@ body {
   display: flex; flex-direction: column; overflow: hidden;
 }
 #sidebar.hidden { display: none; }
-#sidebar-header {
-  padding: 10px 12px 6px; font-size: 11px; font-weight: 500;
-  color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase;
-}
+#sidebar-header { padding: 10px 12px 6px; font-size: 11px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase; }
 #fav-list { flex: 1; overflow-y: auto; padding: 2px 6px 10px; }
-.fav-item {
-  display: flex; align-items: center; gap: 6px;
-  padding: 6px 8px; border-radius: var(--radius); cursor: pointer;
-  font-size: 12.5px; color: var(--text); transition: background 0.1s;
-}
+.fav-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--radius); cursor: pointer; font-size: 12.5px; color: var(--text); }
 .fav-item:hover { background: var(--bg-hover); }
 .fav-item.active { background: var(--accent-dim); color: var(--accent); }
 .fav-item .fav-icon { font-size: 14px; flex-shrink: 0; }
 .fav-item .fav-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fav-item .fav-remove {
-  display: none; width: 18px; height: 18px; border: none; border-radius: 3px;
-  background: transparent; color: var(--text-muted); cursor: pointer;
-  font-size: 12px; align-items: center; justify-content: center;
-}
+.fav-item .fav-remove { display: none; width: 18px; height: 18px; border: none; border-radius: 3px; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 12px; align-items: center; justify-content: center; }
 .fav-item:hover .fav-remove { display: flex; }
 .fav-item .fav-remove:hover { background: var(--danger-dim); color: var(--danger); }
-
 #sidebar-footer { padding: 8px; border-top: 1px solid var(--border); }
-#sidebar-footer button {
-  width: 100%; padding: 5px; border: none; border-radius: var(--radius);
-  background: transparent; color: var(--text-muted); cursor: pointer;
-  font-family: inherit; font-size: 11.5px;
-}
+#sidebar-footer button { width: 100%; padding: 5px; border: none; border-radius: var(--radius); background: transparent; color: var(--text-muted); cursor: pointer; font-family: inherit; font-size: 11.5px; }
 #sidebar-footer button:hover { background: var(--bg-hover); color: var(--text); }
 
 /* ── Main ──────────────────────────────────────────────── */
@@ -154,32 +139,33 @@ body {
 .grid-item {
   display: flex; flex-direction: column; align-items: center;
   border-radius: var(--radius); cursor: pointer; padding: 4px;
-  transition: background 0.1s;
+  transition: background 0.1s; position: relative;
 }
 .grid-item:hover { background: var(--bg-hover); }
+.grid-item.selected { background: var(--accent-dim); outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
+.grid-item.dragging { opacity: 0.25; }
+.grid-item.drag-over-before::before,
+.grid-item.drag-over-after::after {
+  content: ''; position: absolute; top: 4px; bottom: 4px; width: 3px;
+  background: var(--accent); border-radius: 2px; z-index: 5;
+}
+.grid-item.drag-over-before::before { left: -3px; }
+.grid-item.drag-over-after::after { right: -3px; }
 
 .grid-thumb {
   width: 100%; aspect-ratio: 1;
   display: flex; align-items: center; justify-content: center;
-  border-radius: 4px; overflow: hidden; background: var(--bg);
-  position: relative;
+  border-radius: 4px; overflow: hidden; background: var(--bg); position: relative;
 }
 .grid-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
-
-/* Folder preview: 2x2 mosaic + badge overlay */
 .folder-preview {
   display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
   width: 100%; height: 100%; gap: 1px; background: var(--border);
   border-radius: 4px; overflow: hidden; position: relative;
 }
-.folder-preview .fp-cell {
-  background: var(--bg); display: flex; align-items: center; justify-content: center;
-  overflow: hidden;
-}
+.folder-preview .fp-cell { background: var(--bg); display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .folder-preview .fp-cell img { width: 100%; height: 100%; object-fit: cover; }
-.folder-preview .fp-cell .fp-empty {
-  color: var(--text-muted); font-size: 10px; opacity: 0.2;
-}
+.folder-preview .fp-cell .fp-empty { color: var(--text-muted); font-size: 10px; opacity: 0.2; }
 .folder-badge {
   position: absolute; bottom: 3px; right: 3px; z-index: 2;
   width: 30px; height: 30px; border-radius: 6px;
@@ -187,50 +173,26 @@ body {
   display: flex; align-items: center; justify-content: center;
   font-size: 18px; pointer-events: none;
 }
-
 .grid-thumb .folder-icon { font-size: calc(var(--thumb-size) * 0.35px); color: var(--accent); opacity: 0.7; }
 .grid-thumb .file-icon { font-size: calc(var(--thumb-size) * 0.22px); color: var(--text-muted); opacity: 0.5; }
-.grid-thumb .loading-spinner {
-  width: 20px; height: 20px; border: 2px solid var(--border-light);
-  border-top-color: var(--accent); border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
+.grid-thumb .loading-spinner { width: 20px; height: 20px; border: 2px solid var(--border-light); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.grid-name {
-  margin-top: 3px; font-size: 11px; text-align: center;
-  width: 100%; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; color: var(--text-muted); padding: 0 2px;
-}
-.grid-item:hover .grid-name { color: var(--text); }
+.grid-name { margin-top: 3px; font-size: 11px; text-align: center; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); padding: 0 2px; }
+.grid-item:hover .grid-name, .grid-item.selected .grid-name { color: var(--text); }
 
-.empty-state {
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: center; height: 200px; gap: 8px;
-  color: var(--text-muted); font-size: 13px;
-}
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px; gap: 8px; color: var(--text-muted); font-size: 13px; }
 .empty-state .empty-icon { font-size: 36px; opacity: 0.4; }
-
-#loading-overlay {
-  display: none; position: absolute; inset: 0;
-  background: var(--bg); z-index: 10;
-  align-items: center; justify-content: center;
-}
+#loading-overlay { display: none; position: absolute; inset: 0; background: var(--bg); z-index: 10; align-items: center; justify-content: center; }
 #loading-overlay.active { display: flex; }
 
+/* Touch drag clone */
+.touch-drag-clone { position: fixed; z-index: 999; pointer-events: none; opacity: 0.8; transform: scale(0.85); border: 2px solid var(--accent); border-radius: var(--radius); background: var(--bg-raised); }
+
 /* ── Context Menu ──────────────────────────────────────── */
-#ctx-menu {
-  display: none; position: fixed; z-index: 200;
-  background: var(--bg-raised); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 4px 0;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5); min-width: 160px;
-}
+#ctx-menu { display: none; position: fixed; z-index: 200; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 0; box-shadow: 0 8px 24px rgba(0,0,0,0.5); min-width: 180px; }
 #ctx-menu.show { display: block; }
-.ctx-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 14px; cursor: pointer; font-size: 12.5px;
-  color: var(--text); transition: background 0.08s;
-}
+.ctx-item { display: flex; align-items: center; gap: 8px; padding: 7px 14px; cursor: pointer; font-size: 12.5px; color: var(--text); }
 .ctx-item:hover { background: var(--bg-hover); }
 .ctx-item.danger { color: var(--danger); }
 .ctx-item.danger:hover { background: var(--danger-dim); }
@@ -238,183 +200,68 @@ body {
 .ctx-sep { height: 1px; background: var(--border); margin: 4px 8px; }
 
 /* ── Image Viewer ──────────────────────────────────────── */
-#viewer {
-  display: none; position: fixed; inset: 0; z-index: 100;
-  background: #000; flex-direction: column;
-}
+#viewer { display: none; position: fixed; inset: 0; z-index: 100; background: #000; flex-direction: column; }
 #viewer.active { display: flex; }
-
-#viewer-topbar {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 110;
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; background: linear-gradient(rgba(0,0,0,0.7), transparent);
-  opacity: 0; transition: opacity 0.2s; pointer-events: none;
-}
+#viewer-topbar { position: absolute; top: 0; left: 0; right: 0; z-index: 110; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: linear-gradient(rgba(0,0,0,0.7), transparent); opacity: 0; transition: opacity 0.2s; pointer-events: none; }
 #viewer-topbar.visible { opacity: 1; pointer-events: auto; }
-#viewer-title {
-  flex: 1; font-size: 13px; color: #fff;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.viewer-btn {
-  width: 36px; height: 36px; border: none; border-radius: var(--radius);
-  background: rgba(255,255,255,0.1); color: #fff; cursor: pointer;
-  font-size: 18px; display: flex; align-items: center; justify-content: center;
-}
+#viewer-title { flex: 1; font-size: 13px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewer-btn { width: 36px; height: 36px; border: none; border-radius: var(--radius); background: rgba(255,255,255,0.1); color: #fff; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
 .viewer-btn:hover { background: rgba(255,255,255,0.2); }
-
-#viewer-img-wrap {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  overflow: hidden; position: relative;
-}
+#viewer-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
 #viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; }
 #viewer-img.loading { opacity: 0; }
-
 .tap-zone { position: absolute; top: 0; bottom: 0; width: 30%; z-index: 105; cursor: pointer; }
-.tap-zone.left { left: 0; }
-.tap-zone.right { right: 0; }
+.tap-zone.left { left: 0; } .tap-zone.right { right: 0; }
 .tap-zone.center { left: 30%; width: 40%; cursor: default; }
-
-#viewer-bottombar {
-  position: absolute; bottom: 0; left: 0; right: 0; z-index: 110;
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 16px; background: linear-gradient(transparent, rgba(0,0,0,0.7));
-  opacity: 0; transition: opacity 0.2s; pointer-events: none;
-}
+#viewer-bottombar { position: absolute; bottom: 0; left: 0; right: 0; z-index: 110; display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: linear-gradient(transparent, rgba(0,0,0,0.7)); opacity: 0; transition: opacity 0.2s; pointer-events: none; }
 #viewer-bottombar.visible { opacity: 1; pointer-events: auto; }
 #viewer-slider { flex: 1; height: 3px; accent-color: var(--accent); cursor: pointer; }
 #viewer-page-label { font-size: 12px; color: rgba(255,255,255,0.7); min-width: 60px; text-align: right; }
 
-/* ── Rename Modal ──────────────────────────────────────── */
-.modal-overlay {
-  display: none; position: fixed; inset: 0; z-index: 300;
-  background: rgba(0,0,0,0.6); align-items: center; justify-content: center;
-}
+/* ── Modals ────────────────────────────────────────────── */
+.modal-overlay { display: none; position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
 .modal-overlay.show { display: flex; }
-.modal-box {
-  background: var(--bg-raised); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 20px; width: 90%; max-width: 380px;
-}
+.modal-box { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; width: 90%; max-width: 380px; }
+.modal-box.wide { max-width: 520px; }
 .modal-box h3 { font-size: 15px; font-weight: 500; margin-bottom: 12px; }
-.modal-input {
-  width: 100%; padding: 8px 10px; border: 1px solid var(--border);
-  border-radius: var(--radius); background: var(--bg); color: var(--text);
-  font-family: inherit; font-size: 13px; outline: none;
-}
+.modal-input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); font-family: inherit; font-size: 13px; outline: none; }
 .modal-input:focus { border-color: var(--accent); }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
-.modal-btn {
-  padding: 6px 16px; border: none; border-radius: var(--radius);
-  font-family: inherit; font-size: 13px; cursor: pointer;
-}
+.modal-btn { padding: 6px 16px; border: none; border-radius: var(--radius); font-family: inherit; font-size: 13px; cursor: pointer; }
 .modal-btn.primary { background: var(--accent); color: #000; font-weight: 500; }
 .modal-btn.primary:hover { background: var(--accent-strong); }
 .modal-btn.cancel { background: var(--bg-hover); color: var(--text); }
 .modal-btn.cancel:hover { background: var(--bg-selected); }
 
-/* ── Toast ─────────────────────────────────────────────── */
-#toast {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  padding: 8px 18px; border-radius: var(--radius);
-  background: var(--bg-raised); border: 1px solid var(--border);
-  color: var(--text); font-size: 12.5px; z-index: 500;
-  opacity: 0; transition: opacity 0.2s; pointer-events: none;
-}
-#toast.show { opacity: 1; }
-
-/* ── Sort Mode ──────────────────────────────────────────── */
-#sort-mode-bar {
-  display: none; align-items: center; gap: 8px;
-  height: 36px; padding: 0 10px; background: var(--accent-dim);
-  border-bottom: 1px solid var(--accent); font-size: 12.5px;
-}
-#sort-mode-bar.active { display: flex; }
-#sort-mode-bar .sm-label { color: var(--accent); font-weight: 500; flex-shrink: 0; }
-#sort-mode-bar .sm-spacer { flex: 1; }
-.sm-btn {
-  padding: 4px 12px; border: 1px solid var(--accent); border-radius: var(--radius);
-  background: transparent; color: var(--accent); cursor: pointer;
-  font-family: inherit; font-size: 12px; font-weight: 500; transition: all 0.1s;
-}
-.sm-btn:hover { background: var(--accent); color: #000; }
-.sm-btn.danger { border-color: var(--danger); color: var(--danger); }
-.sm-btn.danger:hover { background: var(--danger); color: #fff; }
-
-/* Drag styles */
-.grid-item.sortable { cursor: grab; }
-.grid-item.sortable:active { cursor: grabbing; }
-.grid-item.dragging { opacity: 0.3; }
-.grid-item.drag-over-before::before,
-.grid-item.drag-over-after::after {
-  content: ''; position: absolute; top: 4px; bottom: 4px; width: 3px;
-  background: var(--accent); border-radius: 2px; z-index: 5;
-}
-.grid-item.drag-over-before::before { left: -2px; }
-.grid-item.drag-over-after::after { right: -2px; }
-.grid-item { position: relative; }
-
-/* Touch drag clone */
-.touch-drag-clone {
-  position: fixed; z-index: 999; pointer-events: none;
-  opacity: 0.8; transform: scale(0.9);
-  border: 2px solid var(--accent); border-radius: var(--radius);
-  background: var(--bg-raised);
-}
-
-/* ── Rename Batch Modal ────────────────────────────────── */
-#modal-batch-rename .modal-box { max-width: 520px; }
-.preset-row {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
-}
+.preset-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .preset-row label { font-size: 12px; color: var(--text-muted); min-width: 70px; }
-.preset-select {
-  flex: 1; padding: 6px 8px; border: 1px solid var(--border);
-  border-radius: var(--radius); background: var(--bg); color: var(--text);
-  font-family: inherit; font-size: 12.5px; outline: none;
+.preset-select, .preset-input {
+  flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--text); font-family: inherit; font-size: 12.5px; outline: none;
 }
-.preset-select:focus { border-color: var(--accent); }
-#prefix-input {
-  width: 120px; padding: 6px 8px; border: 1px solid var(--border);
-  border-radius: var(--radius); background: var(--bg); color: var(--text);
-  font-family: inherit; font-size: 12.5px; outline: none;
-}
-#prefix-input:focus { border-color: var(--accent); }
-#prefix-row { display: none; }
-#prefix-row.show { display: flex; }
-
-#rename-preview {
-  max-height: 240px; overflow-y: auto; margin: 10px 0;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  font-size: 11.5px;
-}
-.rp-row {
-  display: flex; padding: 4px 10px; gap: 8px;
-  border-bottom: 1px solid var(--border);
-}
+.preset-select:focus, .preset-input:focus { border-color: var(--accent); }
+#rename-preview { max-height: 240px; overflow-y: auto; margin: 10px 0; border: 1px solid var(--border); border-radius: var(--radius); font-size: 11.5px; }
+.rp-row { display: flex; padding: 4px 10px; gap: 8px; border-bottom: 1px solid var(--border); }
 .rp-row:last-child { border-bottom: none; }
 .rp-old { flex: 1; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp-arrow { color: var(--accent); flex-shrink: 0; }
 .rp-new { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ── Toast ─────────────────────────────────────────────── */
+#toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 8px 18px; border-radius: var(--radius); background: var(--bg-raised); border: 1px solid var(--border); color: var(--text); font-size: 12.5px; z-index: 500; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+#toast.show { opacity: 1; }
+
 /* ── Responsive ────────────────────────────────────────── */
 @media (max-width: 700px) {
   #sidebar { display: none; }
-  #sidebar.mobile-open {
-    display: flex !important; position: fixed; top: var(--toolbar-h); left: 0; bottom: 0;
-    z-index: 50; box-shadow: 4px 0 20px rgba(0,0,0,0.5);
-    width: var(--sidebar-w); min-width: var(--sidebar-w);
-    border-right: 1px solid var(--border);
-  }
+  #sidebar.mobile-open { display: flex !important; position: fixed; top: var(--toolbar-h); left: 0; bottom: 0; z-index: 50; box-shadow: 4px 0 20px rgba(0,0,0,0.5); width: var(--sidebar-w); min-width: var(--sidebar-w); border-right: 1px solid var(--border); }
   #main { padding: 6px; }
 }
 </style>
 </head>
 <body>
 
-<div id="connection-screen">
-  <h1>Dropbox Filer</h1>
-  <p>Dropbox上のファイルをブラウズ・管理するファイラー</p>
-  <div id="dbx-ui"></div>
-</div>
+<div id="connection-screen"><h1>Dropbox Filer</h1><p>Dropbox上のファイルをブラウズ・管理するファイラー</p><div id="dbx-ui"></div></div>
 
 <div id="app">
   <div id="toolbar">
@@ -423,6 +270,7 @@ body {
     <button class="tb-btn" id="btn-forward" title="進む">→</button>
     <button class="tb-btn" id="btn-up" title="上のフォルダ">↑</button>
     <div id="breadcrumb"></div>
+    <span id="sel-badge"></span>
     <select id="sort-select">
       <option value="name_asc">名前 ↑</option>
       <option value="name_desc">名前 ↓</option>
@@ -434,1345 +282,582 @@ body {
     <div class="tb-spacer"></div>
     <input type="range" id="thumb-slider" min="80" max="320" value="160" title="サムネサイズ">
     <div class="tb-spacer"></div>
-    <button class="tb-btn" id="btn-sort-mode" title="並び替えモード">⇅</button>
-    <button class="tb-btn" id="btn-undo" title="リネームを元に戻す" style="display:none">↩</button>
+    <button class="tb-btn" id="btn-select-all" title="全選択">☑</button>
+    <button class="tb-btn" id="btn-undo" title="リネーム取消" style="display:none">↩</button>
     <button class="tb-btn" id="btn-refresh" title="更新">⟳</button>
     <button class="tb-btn" id="btn-disconnect" title="切断">⏻</button>
   </div>
-  <div id="sort-mode-bar">
-    <span class="sm-label">⇅ 並び替えモード</span>
-    <span class="sm-spacer"></span>
-    <button class="sm-btn" id="btn-rename-exec">リネーム実行</button>
-    <button class="sm-btn" id="btn-sort-reset">元に戻す</button>
-    <button class="sm-btn danger" id="btn-sort-cancel">終了</button>
-  </div>
   <div id="body">
-    <div id="sidebar">
-      <div id="sidebar-header">お気に入り</div>
-      <div id="fav-list"></div>
-      <div id="sidebar-footer"><button id="btn-add-fav">＋ 現在のフォルダを追加</button></div>
-    </div>
-    <div id="main">
-      <div id="loading-overlay"><div class="loading-spinner" style="width:28px;height:28px;border:3px solid var(--border-light);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div></div>
-      <div id="grid"></div>
-    </div>
+    <div id="sidebar"><div id="sidebar-header">お気に入り</div><div id="fav-list"></div><div id="sidebar-footer"><button id="btn-add-fav">＋ 現在のフォルダを追加</button></div></div>
+    <div id="main"><div id="loading-overlay"><div class="loading-spinner" style="width:28px;height:28px;border:3px solid var(--border-light);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div></div><div id="grid"></div></div>
   </div>
 </div>
 
 <div id="viewer">
-  <div id="viewer-topbar">
-    <span id="viewer-title"></span>
-    <button class="viewer-btn" id="viewer-close" title="閉じる">✕</button>
-  </div>
-  <div id="viewer-img-wrap">
-    <div class="tap-zone left" id="tap-left"></div>
-    <div class="tap-zone center" id="tap-center"></div>
-    <div class="tap-zone right" id="tap-right"></div>
-    <img id="viewer-img" src="" alt="">
-  </div>
-  <div id="viewer-bottombar">
-    <input type="range" id="viewer-slider" min="0" max="0" value="0">
-    <span id="viewer-page-label"></span>
-  </div>
+  <div id="viewer-topbar"><span id="viewer-title"></span><button class="viewer-btn" id="viewer-close" title="閉じる">✕</button></div>
+  <div id="viewer-img-wrap"><div class="tap-zone left" id="tap-left"></div><div class="tap-zone center" id="tap-center"></div><div class="tap-zone right" id="tap-right"></div><img id="viewer-img" src="" alt=""></div>
+  <div id="viewer-bottombar"><input type="range" id="viewer-slider" min="0" max="0" value="0"><span id="viewer-page-label"></span></div>
 </div>
-
 <div id="ctx-menu"></div>
 
-<div class="modal-overlay" id="modal-rename">
-  <div class="modal-box">
-    <h3>名前の変更</h3>
-    <input class="modal-input" id="rename-input" type="text" autocomplete="off">
-    <div class="modal-actions">
-      <button class="modal-btn cancel" id="rename-cancel">キャンセル</button>
-      <button class="modal-btn primary" id="rename-ok">変更</button>
-    </div>
-  </div>
-</div>
+<div class="modal-overlay" id="modal-rename"><div class="modal-box"><h3>名前の変更</h3><input class="modal-input" id="rename-input" type="text" autocomplete="off"><div class="modal-actions"><button class="modal-btn cancel" id="rename-cancel">キャンセル</button><button class="modal-btn primary" id="rename-ok">変更</button></div></div></div>
+
+<div class="modal-overlay" id="modal-batch-rename"><div class="modal-box wide">
+  <h3>連番リネーム（<span id="batch-count"></span>件）</h3>
+  <div class="preset-row"><label>プリセット</label><select class="preset-select" id="preset-select"><option value="nnn">001.ext</option><option value="nn">01.ext</option><option value="prefix_nnn">接頭辞_001.ext</option><option value="custom">カスタム</option></select></div>
+  <div class="preset-row" id="prefix-row" style="display:none"><label>接頭辞</label><input class="preset-input" id="prefix-input" placeholder="例: ネーム" autocomplete="off"></div>
+  <div class="preset-row" id="custom-row" style="display:none"><label>パターン</label><input class="preset-input" id="custom-input" placeholder="{NNN}.{ext}" autocomplete="off"></div>
+  <div id="rename-preview"></div>
+  <div class="modal-actions"><button class="modal-btn cancel" id="batch-cancel">キャンセル</button><button class="modal-btn primary" id="batch-exec">実行</button></div>
+</div></div>
 
 <div id="toast"></div>
-
-<div class="modal-overlay" id="modal-batch-rename">
-  <div class="modal-box">
-    <h3>連番リネーム</h3>
-    <div class="preset-row">
-      <label>プリセット</label>
-      <select class="preset-select" id="preset-select">
-        <option value="nnn">番号のみ（3桁）: 001.ext</option>
-        <option value="nn">番号のみ（2桁）: 01.ext</option>
-        <option value="prefix_nnn">プレフィックス+番号: prefix_001.ext</option>
-        <option value="custom">カスタム</option>
-      </select>
-    </div>
-    <div class="preset-row" id="prefix-row">
-      <label>プレフィックス</label>
-      <input type="text" id="prefix-input" placeholder="例: ネーム" autocomplete="off">
-    </div>
-    <div class="preset-row" id="custom-row" style="display:none">
-      <label>パターン</label>
-      <input type="text" id="custom-input" class="preset-select" placeholder="{NNN}.{ext}" autocomplete="off">
-    </div>
-    <div id="rename-preview"></div>
-    <div class="modal-actions">
-      <button class="modal-btn cancel" id="batch-cancel">キャンセル</button>
-      <button class="modal-btn primary" id="batch-exec">実行</button>
-    </div>
-  </div>
-</div>
 
 <script>
 'use strict';
 
-// ════════════════════════════════════════
-// State
-// ════════════════════════════════════════
 const App = {
-  storage: null,
-  currentPath: '',
-  entries: [],
-  favorites: [],
-  thumbCache: {},       // cacheKey → objectURL (file thumbs)
-  folderPreviews: {},   // folderPath → [url, url, ...]
-  sortMode: 'name_asc',
-  thumbSize: 160,
-  // Viewer
-  viewerImages: [],
-  viewerIndex: 0,
-  viewerVisible: false,
-  toolbarTimer: null,
-  prefetchCache: {},    // relativePath → objectURL
-  // Navigation
-  navGen: 0,            // incremented on each navigate, to discard stale loads
-  // Phase 2: Sort mode
-  sortModeActive: false,
-  sortedFiles: [],      // reordered file entries (files only, not folders)
-  originalFiles: [],    // original order backup for reset
-  undoHistory: null,    // { entries: [{from, to}] } for undo after rename
+  storage: null, currentPath: '', entries: [], favorites: [],
+  thumbCache: {}, sortMode: 'name_asc', thumbSize: 160,
+  viewerImages: [], viewerIndex: 0, viewerVisible: false, toolbarTimer: null,
+  prefetchCache: {}, navGen: 0,
+  // Selection & reorder
+  selected: new Set(), // indices into App.entries
+  undoHistory: null,
 };
 
 const THUMB_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','ppm']);
 const IMG_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','svg']);
 
-// ════════════════════════════════════════
-// Natural Sort
-// ════════════════════════════════════════
+// ── Natural Sort ──
 function naturalCmp(a, b) {
   const an = natChunks(a), bn = natChunks(b);
-  const len = Math.min(an.length, bn.length);
-  for (let i = 0; i < len; i++) {
+  for (let i = 0, len = Math.min(an.length, bn.length); i < len; i++) {
     const ac = an[i], bc = bn[i];
-    if (ac.n !== null && bc.n !== null) {
-      if (ac.n !== bc.n) return ac.n - bc.n;
-    } else if (ac.n !== null) {
-      return -1; // numbers before text
-    } else if (bc.n !== null) {
-      return 1;
-    } else {
-      const c = ac.s.localeCompare(bc.s, 'ja', { sensitivity: 'base' });
-      if (c !== 0) return c;
-    }
+    if (ac.n !== null && bc.n !== null) { if (ac.n !== bc.n) return ac.n - bc.n; }
+    else if (ac.n !== null) return -1;
+    else if (bc.n !== null) return 1;
+    else { const c = ac.s.localeCompare(bc.s, 'ja', { sensitivity: 'base' }); if (c) return c; }
   }
   return an.length - bn.length;
 }
+function natChunks(s) { const r = [], re = /(\d+)|(\D+)/g; let m; while ((m = re.exec(s))) r.push(m[1] !== undefined ? { n: parseInt(m[1]), s: m[1] } : { n: null, s: m[2] }); return r; }
 
-function natChunks(str) {
-  const res = [];
-  const re = /(\d+)|(\D+)/g;
-  let m;
-  while ((m = re.exec(str)) !== null) {
-    if (m[1] !== undefined) {
-      res.push({ n: parseInt(m[1], 10), s: m[1] });
-    } else {
-      res.push({ n: null, s: m[2] });
-    }
-  }
-  return res;
-}
-
-// ════════════════════════════════════════
-// IndexedDB
-// ════════════════════════════════════════
+// ── IndexedDB ──
 const IDB = {
   db: null,
-  async open() {
-    return new Promise((res, rej) => {
-      const r = indexedDB.open('DropboxFiler', 2);
-      r.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains('thumbs')) db.createObjectStore('thumbs');
-        if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
-        if (!db.objectStoreNames.contains('folderPreviews')) db.createObjectStore('folderPreviews');
-      };
-      r.onsuccess = (e) => { IDB.db = e.target.result; res(); };
-      r.onerror = () => rej(r.error);
-    });
-  },
-  async get(store, key) {
-    return new Promise((res) => {
-      try {
-        const tx = IDB.db.transaction(store, 'readonly');
-        const r = tx.objectStore(store).get(key);
-        r.onsuccess = () => res(r.result);
-        r.onerror = () => res(undefined);
-      } catch(_) { res(undefined); }
-    });
-  },
-  async put(store, key, value) {
-    return new Promise((res) => {
-      try {
-        const tx = IDB.db.transaction(store, 'readwrite');
-        tx.objectStore(store).put(value, key);
-        tx.oncomplete = () => res();
-        tx.onerror = () => res();
-      } catch(_) { res(); }
-    });
-  },
+  async open() { return new Promise((res, rej) => { const r = indexedDB.open('DropboxFiler', 2); r.onupgradeneeded = e => { const db = e.target.result; ['thumbs','settings','folderPreviews'].forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s); }); }; r.onsuccess = e => { IDB.db = e.target.result; res(); }; r.onerror = () => rej(r.error); }); },
+  async get(s, k) { return new Promise(r => { try { const tx = IDB.db.transaction(s,'readonly'); const q = tx.objectStore(s).get(k); q.onsuccess = () => r(q.result); q.onerror = () => r(); } catch(_) { r(); } }); },
+  async put(s, k, v) { return new Promise(r => { try { const tx = IDB.db.transaction(s,'readwrite'); tx.objectStore(s).put(v, k); tx.oncomplete = () => r(); tx.onerror = () => r(); } catch(_) { r(); } }); },
 };
 
-// ════════════════════════════════════════
-// Dropbox Thumbnail API
-// ════════════════════════════════════════
-function dbxArg(obj) {
-  return JSON.stringify(obj).replace(/[\u0080-\uFFFF]/g,
-    c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
-}
+// ── Dropbox Thumbnail ──
+function dbxArg(o) { return JSON.stringify(o).replace(/[\u0080-\uFFFF]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')); }
+async function fetchThumbnail(p, sz) { const r = await fetch('https://content.dropboxapi.com/2/files/get_thumbnail_v2', { method: 'POST', headers: { 'Authorization': 'Bearer ' + App.storage.getToken(), 'Dropbox-API-Arg': dbxArg({ resource: { '.tag': 'path', path: p }, format: 'jpeg', size: sz || 'w256h256', mode: 'bestfit' }) } }); if (!r.ok) throw new Error(r.status); return r.blob(); }
 
-async function fetchThumbnail(absPath, size) {
-  const token = App.storage.getToken();
-  const r = await fetch('https://content.dropboxapi.com/2/files/get_thumbnail_v2', {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + token,
-      'Dropbox-API-Arg': dbxArg({
-        resource: { '.tag': 'path', path: absPath },
-        format: 'jpeg', size: size || 'w256h256', mode: 'bestfit',
-      }),
-    },
-  });
-  if (!r.ok) throw new Error(r.status);
-  return r.blob();
-}
-
-// ════════════════════════════════════════
-// Helpers
-// ════════════════════════════════════════
+// ── Helpers ──
 const $ = s => document.querySelector(s);
 function ext(n) { const i = n.lastIndexOf('.'); return i > 0 ? n.slice(i+1).toLowerCase() : ''; }
 function baseName(p) { return p.split('/').pop(); }
 function parentPath(p) { const a = p.split('/'); a.pop(); return a.join('/'); }
+function toast(m) { const e = $('#toast'); e.textContent = m; e.classList.add('show'); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove('show'), 2200); }
+function entryRelPath(entry) { const a = entry.path_display || entry.path_lower || ''; return a.startsWith('/') ? a.slice(1) : a; }
 
-function toast(msg) {
-  const el = $('#toast');
-  el.textContent = msg; el.classList.add('show');
-  clearTimeout(el._t);
-  el._t = setTimeout(() => el.classList.remove('show'), 2200);
-}
-
-function entryRelPath(entry) {
-  // path_display is like "/FolderA/SubB/file.jpg" → strip leading "/"
-  const abs = entry.path_display || entry.path_lower || '';
-  return abs.startsWith('/') ? abs.slice(1) : abs;
-}
-
-// ════════════════════════════════════════
-// Thumbnail Queue (shared for files + folder previews)
-// ════════════════════════════════════════
+// ── Thumb Queue ──
 const TQ = { running: 0, max: 6, q: [] };
-function tqRun(fn) {
-  return new Promise((resolve, reject) => {
-    const exec = () => {
-      TQ.running++;
-      fn().then(resolve, reject).finally(() => {
-        TQ.running--;
-        if (TQ.q.length) TQ.q.shift()();
-      });
-    };
-    if (TQ.running < TQ.max) exec();
-    else TQ.q.push(exec);
-  });
-}
+function tqRun(fn) { return new Promise((res, rej) => { const exec = () => { TQ.running++; fn().then(res, rej).finally(() => { TQ.running--; if (TQ.q.length) TQ.q.shift()(); }); }; TQ.running < TQ.max ? exec() : TQ.q.push(exec); }); }
 
 // ════════════════════════════════════════
 // Init
 // ════════════════════════════════════════
 async function init() {
   await IDB.open();
-
-  const st = await IDB.get('settings', 'thumbSize');
-  if (st) { App.thumbSize = st; $('#thumb-slider').value = st; document.documentElement.style.setProperty('--thumb-size', st); }
-  const ss = await IDB.get('settings', 'sortMode');
-  if (ss) { App.sortMode = ss; $('#sort-select').value = ss; }
-  const sf = await IDB.get('settings', 'favorites');
-  if (sf) App.favorites = sf;
-  const sp = await IDB.get('settings', 'lastPath');
-  const sbHidden = await IDB.get('settings', 'sidebarHidden');
-  if (sbHidden) document.getElementById('sidebar').classList.add('hidden');
+  const st = await IDB.get('settings','thumbSize'); if (st) { App.thumbSize = st; $('#thumb-slider').value = st; document.documentElement.style.setProperty('--thumb-size', st); }
+  const ss = await IDB.get('settings','sortMode'); if (ss) { App.sortMode = ss; $('#sort-select').value = ss; }
+  const sf = await IDB.get('settings','favorites'); if (sf) App.favorites = sf;
+  const sp = await IDB.get('settings','lastPath');
+  const sh = await IDB.get('settings','sidebarHidden'); if (sh) $('#sidebar').classList.add('hidden');
 
   App.storage = new StorageBridge({ basePath: '', storagePrefix: 'dbxfiler', ui: true, uiTarget: '#dbx-ui' });
-
-  App.storage.on('connected', async () => {
-    $('#connection-screen').style.display = 'none';
-    $('#app').classList.add('active');
-    renderFavorites();
-    const startPath = pathFromHash() ?? sp ?? '';
-    await navigate(startPath, true);
-  });
-  App.storage.on('disconnected', () => {
-    $('#connection-screen').style.display = '';
-    $('#app').classList.remove('active');
-  });
-
-  if (App.storage.isConnected) {
-    $('#connection-screen').style.display = 'none';
-    $('#app').classList.add('active');
-    renderFavorites();
-    const startPath = pathFromHash() ?? sp ?? '';
-    navigate(startPath, true);
-  }
-
+  App.storage.on('connected', async () => { $('#connection-screen').style.display = 'none'; $('#app').classList.add('active'); renderFavorites(); await navigate(pathFromHash() ?? sp ?? '', true); });
+  App.storage.on('disconnected', () => { $('#connection-screen').style.display = ''; $('#app').classList.remove('active'); });
+  if (App.storage.isConnected) { $('#connection-screen').style.display = 'none'; $('#app').classList.add('active'); renderFavorites(); navigate(pathFromHash() ?? sp ?? '', true); }
   setupEvents();
 }
 
-// ════════════════════════════════════════
-// History API — folder path stored in hash
-// ════════════════════════════════════════
-function pathFromHash() {
-  const h = location.hash;
-  if (!h || h === '#') return null;
-  try { return decodeURIComponent(h.slice(1)); } catch(_) { return null; }
-}
+// ── History ──
+function pathFromHash() { const h = location.hash; if (!h || h === '#') return null; try { return decodeURIComponent(h.slice(1)); } catch(_) { return null; } }
+function pushHash(p) { const h = '#' + encodeURIComponent(p); if (location.hash !== h) history.pushState(null, '', h); }
+function replaceHash(p) { history.replaceState(null, '', '#' + encodeURIComponent(p)); }
 
-function pushHash(path) {
-  const newHash = '#' + encodeURIComponent(path);
-  if (location.hash !== newHash) {
-    history.pushState(null, '', newHash);
-  }
-}
-
-function replaceHash(path) {
-  history.replaceState(null, '', '#' + encodeURIComponent(path));
-}
-
-// ════════════════════════════════════════
-// Navigation
-// ════════════════════════════════════════
+// ── Navigation ──
 async function navigate(path, replace) {
   path = (path || '').replace(/^\/+|\/+$/g, '');
-  App.currentPath = path;
+  App.currentPath = path; App.selected.clear(); updateSelBadge();
   IDB.put('settings', 'lastPath', path);
   replace ? replaceHash(path) : pushHash(path);
-  updateNavButtons();
-  renderBreadcrumb();
-  renderFavorites();
+  $('#btn-up').classList.toggle('disabled', !path);
+  renderBreadcrumb(); renderFavorites();
   await loadFolder(path);
 }
 
 async function loadFolder(path) {
-  const gen = ++App.navGen;
-  const grid = $('#grid');
-  const loading = $('#loading-overlay');
-
-  // Clear immediately to prevent stale thumbnails
-  grid.innerHTML = '';
-  loading.classList.add('active');
-
+  const gen = ++App.navGen; const grid = $('#grid'); const ld = $('#loading-overlay');
+  grid.innerHTML = ''; ld.classList.add('active');
   try {
     const entries = await App.storage.list(path || '');
-    if (gen !== App.navGen) return; // stale
-    App.entries = sortEntries(entries);
-    renderGrid(gen);
-  } catch (e) {
     if (gen !== App.navGen) return;
-    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">⚠</div><div>読み込みエラー</div></div>';
-  } finally {
-    if (gen === App.navGen) loading.classList.remove('active');
-  }
+    App.entries = sortEntries(entries);
+    App.selected.clear(); updateSelBadge();
+    renderGrid(gen);
+  } catch(e) { if (gen === App.navGen) grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">⚠</div><div>読み込みエラー</div></div>'; }
+  finally { if (gen === App.navGen) ld.classList.remove('active'); }
 }
 
 function sortEntries(entries) {
   const folders = entries.filter(e => e['.tag'] === 'folder');
   const files = entries.filter(e => e['.tag'] === 'file');
-  const cmp = (a, b) => {
-    switch (App.sortMode) {
-      case 'name_asc': return naturalCmp(a.name, b.name);
-      case 'name_desc': return naturalCmp(b.name, a.name);
-      case 'date_desc': return (b.client_modified || '').localeCompare(a.client_modified || '');
-      case 'date_asc': return (a.client_modified || '').localeCompare(b.client_modified || '');
-      case 'size_desc': return (b.size || 0) - (a.size || 0);
-      case 'size_asc': return (a.size || 0) - (b.size || 0);
-      default: return 0;
-    }
-  };
-  folders.sort((a, b) => naturalCmp(a.name, b.name));
-  files.sort(cmp);
+  const cmp = (a, b) => { switch (App.sortMode) {
+    case 'name_asc': return naturalCmp(a.name, b.name);
+    case 'name_desc': return naturalCmp(b.name, a.name);
+    case 'date_desc': return (b.client_modified||'').localeCompare(a.client_modified||'');
+    case 'date_asc': return (a.client_modified||'').localeCompare(b.client_modified||'');
+    case 'size_desc': return (b.size||0) - (a.size||0);
+    case 'size_asc': return (a.size||0) - (b.size||0);
+    default: return 0; }};
+  folders.sort((a, b) => naturalCmp(a.name, b.name)); files.sort(cmp);
   return [...folders, ...files];
 }
 
-function updateNavButtons() {
-  $('#btn-up').classList.toggle('disabled', !App.currentPath);
-}
-
-// ════════════════════════════════════════
-// Breadcrumb
-// ════════════════════════════════════════
 function renderBreadcrumb() {
-  const bc = $('#breadcrumb');
   const parts = App.currentPath ? App.currentPath.split('/') : [];
-  let html = `<span class="bc-item${!parts.length ? ' current' : ''}" data-path="">Dropbox</span>`;
-  let acc = '';
-  for (let i = 0; i < parts.length; i++) {
-    acc += (acc ? '/' : '') + parts[i];
-    html += `<span class="bc-sep">›</span><span class="bc-item${i === parts.length-1 ? ' current' : ''}" data-path="${acc}">${parts[i]}</span>`;
-  }
-  bc.innerHTML = html;
-  bc.scrollLeft = bc.scrollWidth;
+  let h = `<span class="bc-item${!parts.length ? ' current' : ''}" data-path="">Dropbox</span>`, acc = '';
+  for (let i = 0; i < parts.length; i++) { acc += (acc ? '/' : '') + parts[i]; h += `<span class="bc-sep">›</span><span class="bc-item${i===parts.length-1?' current':''}" data-path="${acc}">${parts[i]}</span>`; }
+  const bc = $('#breadcrumb'); bc.innerHTML = h; bc.scrollLeft = bc.scrollWidth;
 }
 
-// ════════════════════════════════════════
-// Grid
-// ════════════════════════════════════════
+// ── Grid ──
 function renderGrid(gen) {
-  const grid = $('#grid');
-  const entries = App.entries;
-  if (!entries.length) {
-    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">📂</div><div>空のフォルダ</div></div>';
-    return;
-  }
+  const grid = $('#grid'); const entries = App.entries;
+  if (!entries.length) { grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">📂</div><div>空のフォルダ</div></div>'; return; }
   grid.innerHTML = entries.map((entry, idx) => {
-    const isFolder = entry['.tag'] === 'folder';
-    const e = ext(entry.name);
-    if (isFolder) {
-      return `<div class="grid-item" data-index="${idx}" data-tag="folder">
-        <div class="grid-thumb" id="thumb-${idx}"><span class="folder-icon">📁</span></div>
-        <div class="grid-name" title="${entry.name}">${entry.name}</div>
-      </div>`;
-    }
-    return `<div class="grid-item" data-index="${idx}" data-tag="file">
-      <div class="grid-thumb" id="thumb-${idx}">
-        ${THUMB_EXT.has(e) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">📄</span>'}
-      </div>
-      <div class="grid-name" title="${entry.name}">${entry.name}</div>
-    </div>`;
+    const isF = entry['.tag'] === 'folder', e = ext(entry.name), sel = App.selected.has(idx);
+    const draggable = !isF ? ' draggable="true"' : '';
+    return `<div class="grid-item${sel ? ' selected' : ''}" data-index="${idx}" data-tag="${entry['.tag']}"${draggable}>
+      <div class="grid-thumb" id="thumb-${idx}">${isF ? '<span class="folder-icon">📁</span>' : (THUMB_EXT.has(e) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">📄</span>')}</div>
+      <div class="grid-name" title="${entry.name}">${entry.name}</div></div>`;
   }).join('');
-
-  setupObserver(gen);
-  loadFolderPreviews(gen);
+  setupObserver(gen); loadFolderPreviews(gen);
 }
 
-// ════════════════════════════════════════
-// File Thumbnail (Intersection Observer)
-// ════════════════════════════════════════
+// ── Selection ──
+function toggleSelect(idx, multi, range) {
+  if (range && App._lastClickIdx !== undefined) {
+    const lo = Math.min(App._lastClickIdx, idx), hi = Math.max(App._lastClickIdx, idx);
+    for (let i = lo; i <= hi; i++) App.selected.add(i);
+  } else if (multi) {
+    App.selected.has(idx) ? App.selected.delete(idx) : App.selected.add(idx);
+  } else {
+    if (App.selected.size === 1 && App.selected.has(idx)) App.selected.clear();
+    else { App.selected.clear(); App.selected.add(idx); }
+  }
+  App._lastClickIdx = idx;
+  updateSelectionUI();
+}
+function selectAll() { App.entries.forEach((_, i) => App.selected.add(i)); updateSelectionUI(); }
+function clearSelection() { App.selected.clear(); updateSelectionUI(); }
+function updateSelectionUI() {
+  document.querySelectorAll('.grid-item').forEach(el => {
+    const idx = parseInt(el.dataset.index);
+    el.classList.toggle('selected', App.selected.has(idx));
+  });
+  updateSelBadge();
+}
+function updateSelBadge() {
+  const b = $('#sel-badge'), n = App.selected.size;
+  b.textContent = n + '件選択'; b.classList.toggle('show', n > 0);
+}
+function selectedFileEntries() {
+  return [...App.selected].sort((a,b) => a - b).map(i => App.entries[i]).filter(e => e && e['.tag'] === 'file');
+}
+
+// ── Thumb Observer ──
 let observer = null;
 function setupObserver(gen) {
   if (observer) observer.disconnect();
-  observer = new IntersectionObserver((ios) => {
-    for (const io of ios) {
-      if (io.isIntersecting) {
-        loadThumb(parseInt(io.target.dataset.index), gen);
-        observer.unobserve(io.target);
-      }
-    }
-  }, { root: $('#main'), rootMargin: '300px' });
-  document.querySelectorAll('.grid-item[data-tag="file"]').forEach(el => {
-    const idx = parseInt(el.dataset.index);
-    const entry = App.entries[idx];
-    if (entry && THUMB_EXT.has(ext(entry.name))) observer.observe(el);
-  });
+  observer = new IntersectionObserver(ios => { for (const io of ios) { if (io.isIntersecting) { loadThumb(parseInt(io.target.dataset.index), gen); observer.unobserve(io.target); } } }, { root: $('#main'), rootMargin: '300px' });
+  document.querySelectorAll('.grid-item[data-tag="file"]').forEach(el => { const i = parseInt(el.dataset.index); if (App.entries[i] && THUMB_EXT.has(ext(App.entries[i].name))) observer.observe(el); });
 }
-
 async function loadThumb(idx, gen) {
-  const entry = App.entries[idx];
-  if (!entry) return;
-  const absPath = entry.path_lower;
-  const cacheKey = absPath + ':' + (entry.content_hash || '');
-
-  // Memory cache
-  if (App.thumbCache[cacheKey]) {
-    setThumbImg(idx, gen, App.thumbCache[cacheKey]);
-    return;
-  }
-  // IDB cache
-  const cached = await IDB.get('thumbs', cacheKey);
-  if (cached) {
-    const url = URL.createObjectURL(new Blob([cached], { type: 'image/jpeg' }));
-    App.thumbCache[cacheKey] = url;
-    setThumbImg(idx, gen, url);
-    return;
-  }
-  // Fetch via queue
-  tqRun(async () => {
-    const blob = await fetchThumbnail(entry.path_display || absPath);
-    const buf = await blob.arrayBuffer();
-    const url = URL.createObjectURL(new Blob([buf], { type: 'image/jpeg' }));
-    App.thumbCache[cacheKey] = url;
-    IDB.put('thumbs', cacheKey, buf);
-    setThumbImg(idx, gen, url);
-  }).catch(() => {
-    if (gen === App.navGen) {
-      const el = document.getElementById('thumb-' + idx);
-      if (el) el.innerHTML = '<span class="file-icon">🖼</span>';
-    }
-  });
+  const entry = App.entries[idx]; if (!entry) return;
+  const ck = entry.path_lower + ':' + (entry.content_hash || '');
+  if (App.thumbCache[ck]) { setThumbImg(idx, gen, App.thumbCache[ck]); return; }
+  const cached = await IDB.get('thumbs', ck);
+  if (cached) { const u = URL.createObjectURL(new Blob([cached], { type: 'image/jpeg' })); App.thumbCache[ck] = u; setThumbImg(idx, gen, u); return; }
+  tqRun(async () => { const blob = await fetchThumbnail(entry.path_display || entry.path_lower); const buf = await blob.arrayBuffer(); const u = URL.createObjectURL(new Blob([buf], { type: 'image/jpeg' })); App.thumbCache[ck] = u; IDB.put('thumbs', ck, buf); setThumbImg(idx, gen, u); }).catch(() => { if (gen === App.navGen) { const el = document.getElementById('thumb-' + idx); if (el) el.innerHTML = '<span class="file-icon">🖼</span>'; } });
 }
+function setThumbImg(idx, gen, u) { if (gen !== App.navGen) return; const el = document.getElementById('thumb-' + idx); if (el) el.innerHTML = `<img src="${u}" alt="">`; }
 
-function setThumbImg(idx, gen, url) {
-  if (gen !== App.navGen) return;
-  const el = document.getElementById('thumb-' + idx);
-  if (el) el.innerHTML = `<img src="${url}" alt="">`;
-}
-
-// ════════════════════════════════════════
-// Folder Preview Thumbnails
-// ════════════════════════════════════════
+// ── Folder Previews ──
 async function loadFolderPreviews(gen) {
-  const folderEntries = App.entries
-    .map((e, i) => ({ entry: e, idx: i }))
-    .filter(x => x.entry['.tag'] === 'folder');
-
-  for (const { entry, idx } of folderEntries) {
-    if (gen !== App.navGen) return;
-    const folderRel = entryRelPath(entry);
-
-    // Check IDB cache for this folder
-    const cached = await IDB.get('folderPreviews', entry.path_lower);
-    if (cached && cached.length > 0) {
-      renderFolderPreview(idx, gen, cached);
-      continue;
-    }
-
-    // Fire and forget — don't await per folder, use queue
-    loadOneFolderPreview(entry, idx, gen, folderRel);
+  for (const [i, e] of App.entries.entries()) {
+    if (e['.tag'] !== 'folder' || gen !== App.navGen) continue;
+    const cached = await IDB.get('folderPreviews', e.path_lower);
+    if (cached && cached.length) { renderFP(i, gen, cached); continue; }
+    loadOneFP(e, i, gen);
   }
 }
-
-async function loadOneFolderPreview(entry, idx, gen, folderRel) {
+async function loadOneFP(entry, idx, gen) {
   try {
-    const children = await App.storage.list(folderRel);
-    if (gen !== App.navGen) return;
-    const images = children.filter(c => c['.tag'] === 'file' && THUMB_EXT.has(ext(c.name)));
-    if (!images.length) return;
-
-    const toFetch = images.slice(0, 4);
+    const ch = await App.storage.list(entryRelPath(entry)); if (gen !== App.navGen) return;
+    const imgs = ch.filter(c => c['.tag'] === 'file' && THUMB_EXT.has(ext(c.name))).slice(0, 4);
+    if (!imgs.length) return;
     const urls = [];
-    for (const img of toFetch) {
-      if (gen !== App.navGen) return;
-      try {
-        const blob = await tqRun(() => fetchThumbnail(img.path_display || img.path_lower, 'w128h128'));
-        urls.push(URL.createObjectURL(blob));
-      } catch(_) {}
-    }
+    for (const img of imgs) { if (gen !== App.navGen) return; try { urls.push(URL.createObjectURL(await tqRun(() => fetchThumbnail(img.path_display || img.path_lower, 'w128h128')))); } catch(_) {} }
     if (urls.length && gen === App.navGen) {
-      const bufs = [];
-      for (const url of urls) {
-        try { bufs.push(await (await fetch(url)).arrayBuffer()); } catch(_) {}
-      }
+      const bufs = []; for (const u of urls) try { bufs.push(await (await fetch(u)).arrayBuffer()); } catch(_) {}
       if (bufs.length) IDB.put('folderPreviews', entry.path_lower, bufs);
-      renderFolderPreview(idx, gen, urls);
+      renderFP(idx, gen, urls);
     }
   } catch(_) {}
 }
-
-function renderFolderPreview(idx, gen, urlsOrBufs) {
-  if (gen !== App.navGen) return;
-  const el = document.getElementById('thumb-' + idx);
-  if (!el) return;
-  const urls = urlsOrBufs.map(u =>
-    typeof u === 'string' ? u : URL.createObjectURL(new Blob([u], { type: 'image/jpeg' }))
-  );
-  let cells = '';
-  for (let i = 0; i < 4; i++) {
-    cells += urls[i]
-      ? `<div class="fp-cell"><img src="${urls[i]}" alt=""></div>`
-      : `<div class="fp-cell"><span class="fp-empty">·</span></div>`;
-  }
+function renderFP(idx, gen, data) {
+  if (gen !== App.navGen) return; const el = document.getElementById('thumb-' + idx); if (!el) return;
+  const urls = data.map(u => typeof u === 'string' ? u : URL.createObjectURL(new Blob([u], { type: 'image/jpeg' })));
+  let cells = ''; for (let i = 0; i < 4; i++) cells += urls[i] ? `<div class="fp-cell"><img src="${urls[i]}" alt=""></div>` : '<div class="fp-cell"><span class="fp-empty">·</span></div>';
   el.innerHTML = `<div class="folder-preview">${cells}<div class="folder-badge">📁</div></div>`;
 }
 
-// ════════════════════════════════════════
-// Favorites
-// ════════════════════════════════════════
+// ── Favorites ──
 function renderFavorites() {
-  const list = $('#fav-list');
-  if (!App.favorites.length) {
-    list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:11.5px;text-align:center">お気に入りなし</div>';
-    return;
-  }
-  list.innerHTML = App.favorites.map((f, i) => `
-    <div class="fav-item${App.currentPath === f.path ? ' active' : ''}" data-path="${f.path}" data-index="${i}">
-      <span class="fav-icon">📁</span>
-      <span class="fav-name" title="${f.path || 'ルート'}">${f.name}</span>
-      <button class="fav-remove" data-index="${i}" title="削除">✕</button>
-    </div>`).join('');
+  const l = $('#fav-list');
+  if (!App.favorites.length) { l.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:11.5px;text-align:center">お気に入りなし</div>'; return; }
+  l.innerHTML = App.favorites.map((f, i) => `<div class="fav-item${App.currentPath===f.path?' active':''}" data-path="${f.path}" data-index="${i}"><span class="fav-icon">📁</span><span class="fav-name" title="${f.path||'ルート'}">${f.name}</span><button class="fav-remove" data-index="${i}" title="削除">✕</button></div>`).join('');
 }
-function addFavorite(path) {
-  if (App.favorites.some(f => f.path === path)) { toast('追加済みです'); return; }
-  App.favorites.push({ path, name: path ? baseName(path) : 'ルート' });
-  IDB.put('settings', 'favorites', App.favorites);
-  renderFavorites(); toast('お気に入りに追加');
-}
-function removeFavorite(i) {
-  App.favorites.splice(i, 1);
-  IDB.put('settings', 'favorites', App.favorites);
-  renderFavorites();
-}
+function addFavorite(p) { if (App.favorites.some(f => f.path === p)) { toast('追加済み'); return; } App.favorites.push({ path: p, name: p ? baseName(p) : 'ルート' }); IDB.put('settings','favorites', App.favorites); renderFavorites(); toast('お気に入りに追加'); }
+function removeFavorite(i) { App.favorites.splice(i, 1); IDB.put('settings','favorites', App.favorites); renderFavorites(); }
 
-// ════════════════════════════════════════
-// Context Menu
-// ════════════════════════════════════════
-let ctxTarget = null;
-function showCtx(x, y, entry) {
-  ctxTarget = entry;
-  const m = $('#ctx-menu');
-  const isF = entry['.tag'] === 'folder';
-  const e = ext(entry.name);
+// ── Context Menu ──
+let ctxTarget = null, ctxIsMulti = false;
+function showCtx(x, y, entry, multi) {
+  ctxTarget = entry; ctxIsMulti = multi;
+  const m = $('#ctx-menu'), isF = entry['.tag'] === 'folder', e = ext(entry.name);
   let h = '';
-  if (isF) {
-    h += '<div class="ctx-item" data-action="open"><span class="ctx-icon">📂</span>開く</div>';
-    h += '<div class="ctx-item" data-action="fav"><span class="ctx-icon">⭐</span>お気に入りに追加</div>';
-    h += '<div class="ctx-sep"></div>';
-  } else if (IMG_EXT.has(e)) {
-    h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">🖼</span>画像を開く</div>';
-    h += '<div class="ctx-sep"></div>';
+  if (multi) {
+    const count = App.selected.size;
+    h += `<div class="ctx-item" style="color:var(--text-muted);pointer-events:none;font-size:11.5px">${count}件選択中</div><div class="ctx-sep"></div>`;
+    h += '<div class="ctx-item" data-action="batch-rename"><span class="ctx-icon">🔢</span>連番リネーム</div>';
+    h += '<div class="ctx-item danger" data-action="delete-multi"><span class="ctx-icon">🗑</span>まとめて削除</div>';
+  } else {
+    if (isF) { h += '<div class="ctx-item" data-action="open"><span class="ctx-icon">📂</span>開く</div><div class="ctx-item" data-action="fav"><span class="ctx-icon">⭐</span>お気に入りに追加</div><div class="ctx-sep"></div>'; }
+    else if (IMG_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">🖼</span>画像を開く</div><div class="ctx-sep"></div>'; }
+    h += '<div class="ctx-item" data-action="rename"><span class="ctx-icon">✏</span>名前の変更</div>';
+    h += '<div class="ctx-item danger" data-action="delete"><span class="ctx-icon">🗑</span>削除</div>';
   }
-  h += '<div class="ctx-item" data-action="rename"><span class="ctx-icon">✏</span>名前の変更</div>';
-  h += '<div class="ctx-item danger" data-action="delete"><span class="ctx-icon">🗑</span>削除</div>';
-  m.innerHTML = h;
-  m.style.left = Math.min(x, innerWidth - 180) + 'px';
-  m.style.top = Math.min(y, innerHeight - 200) + 'px';
-  m.classList.add('show');
+  m.innerHTML = h; m.style.left = Math.min(x, innerWidth - 200) + 'px'; m.style.top = Math.min(y, innerHeight - 200) + 'px'; m.classList.add('show');
 }
-function hideCtx() { $('#ctx-menu').classList.remove('show'); ctxTarget = null; }
+function hideCtx() { $('#ctx-menu').classList.remove('show'); ctxTarget = null; ctxIsMulti = false; }
 
 async function doCtx(action) {
-  if (!ctxTarget) return;
   const entry = ctxTarget; hideCtx();
-  const rel = entryRelPath(entry);
-  if (action === 'open') navigate(rel);
+  if (action === 'open') navigate(entryRelPath(entry));
   else if (action === 'view') openViewer(entry);
-  else if (action === 'fav') addFavorite(rel);
+  else if (action === 'fav') addFavorite(entryRelPath(entry));
   else if (action === 'rename') showRenameModal(entry);
   else if (action === 'delete') await deleteEntry(entry);
+  else if (action === 'batch-rename') openBatchRename();
+  else if (action === 'delete-multi') await deleteMulti();
 }
 
-// ════════════════════════════════════════
-// Rename / Delete
-// ════════════════════════════════════════
+// ── Rename (single) ──
 let renameTarget = null;
-function showRenameModal(entry) {
-  renameTarget = entry;
-  const inp = $('#rename-input');
-  inp.value = entry['.tag'] === 'folder' ? entry.name : entry.name.replace(/\.[^.]+$/, '');
-  $('#modal-rename').classList.add('show');
-  setTimeout(() => { inp.focus(); inp.select(); }, 50);
-}
+function showRenameModal(entry) { renameTarget = entry; const inp = $('#rename-input'); inp.value = entry['.tag'] === 'folder' ? entry.name : entry.name.replace(/\.[^.]+$/, ''); $('#modal-rename').classList.add('show'); setTimeout(() => { inp.focus(); inp.select(); }, 50); }
 async function execRename() {
-  if (!renameTarget) return;
-  const entry = renameTarget;
-  const raw = $('#rename-input').value.trim();
-  if (!raw) return;
-  const e = ext(entry.name);
-  const fin = (entry['.tag'] === 'file' && e) ? raw + '.' + e : raw;
+  if (!renameTarget) return; const entry = renameTarget, raw = $('#rename-input').value.trim(); if (!raw) return;
+  const e = ext(entry.name), fin = (entry['.tag'] === 'file' && e) ? raw + '.' + e : raw;
   if (fin === entry.name) { $('#modal-rename').classList.remove('show'); return; }
-  const rel = entryRelPath(entry);
-  const par = parentPath(rel);
-  const newRel = par ? par + '/' + fin : fin;
-  try {
-    await App.storage.move(rel, newRel);
-    toast('名前を変更しました');
-    $('#modal-rename').classList.remove('show');
-    loadFolder(App.currentPath);
-  } catch(e) { toast('エラー: ' + e.message); }
-}
-async function deleteEntry(entry) {
-  if (!confirm(`「${entry.name}」を削除しますか？`)) return;
-  try {
-    await App.storage.delete(entryRelPath(entry));
-    toast('削除しました');
-    loadFolder(App.currentPath);
-  } catch(e) { toast('削除エラー: ' + e.message); }
+  const rel = entryRelPath(entry), par = parentPath(rel), nr = par ? par + '/' + fin : fin;
+  try { await App.storage.move(rel, nr); toast('名前を変更しました'); $('#modal-rename').classList.remove('show'); loadFolder(App.currentPath); } catch(e) { toast('エラー: ' + e.message); }
 }
 
-// ════════════════════════════════════════
-// Phase 2: Sort Mode & Batch Rename
-// ════════════════════════════════════════
-function enterSortMode() {
-  if (App.sortModeActive) return;
-  App.sortModeActive = true;
-  // Separate folders and files — only files are reorderable
-  const folders = App.entries.filter(e => e['.tag'] === 'folder');
-  const files = App.entries.filter(e => e['.tag'] === 'file');
-  App.originalFiles = [...files];
-  App.sortedFiles = [...files];
-  App.undoHistory = null;
-  $('#sort-mode-bar').classList.add('active');
-  // Re-render with drag handles
-  renderSortableGrid();
-}
-
-function exitSortMode() {
-  App.sortModeActive = false;
-  App.sortedFiles = [];
-  App.originalFiles = [];
-  $('#sort-mode-bar').classList.remove('active');
-  // Reload from Dropbox to restore proper entries
+// ── Delete ──
+async function deleteEntry(entry) { if (!confirm(`「${entry.name}」を削除しますか？`)) return; try { await App.storage.delete(entryRelPath(entry)); toast('削除しました'); loadFolder(App.currentPath); } catch(e) { toast('削除エラー: ' + e.message); } }
+async function deleteMulti() {
+  const sel = [...App.selected].map(i => App.entries[i]).filter(Boolean);
+  if (!sel.length || !confirm(`${sel.length}件を削除しますか？`)) return;
+  let ok = 0, fail = 0;
+  for (const e of sel) { try { await App.storage.delete(entryRelPath(e)); ok++; } catch(_) { fail++; } }
+  toast(fail ? `${ok}件削除（${fail}件エラー）` : `${ok}件削除しました`);
   loadFolder(App.currentPath);
-}
-
-function resetSortOrder() {
-  App.sortedFiles = [...App.originalFiles];
-  renderSortableGrid();
-  toast('並び順をリセットしました');
-}
-
-function renderSortableGrid() {
-  const grid = $('#grid');
-  const folders = App.entries.filter(e => e['.tag'] === 'folder');
-  const files = App.sortedFiles;
-  const all = [...folders, ...files];
-
-  // Update App.entries so thumb loading uses correct indices
-  App.entries = all;
-
-  grid.innerHTML = all.map((entry, idx) => {
-    const isFolder = entry['.tag'] === 'folder';
-    const e = ext(entry.name);
-    const isFile = !isFolder;
-    return `<div class="grid-item${isFile ? ' sortable' : ''}" data-index="${idx}" data-tag="${entry['.tag']}" ${isFile ? 'draggable="true"' : ''}>
-      <div class="grid-thumb" id="thumb-${idx}">
-        ${isFolder ? '<span class="folder-icon">📁</span>'
-          : (THUMB_EXT.has(e) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">📄</span>')}
-      </div>
-      <div class="grid-name" title="${entry.name}">${entry.name}</div>
-    </div>`;
-  }).join('');
-
-  const gen = App.navGen;
-  setupObserver(gen);
-  loadFolderPreviews(gen);
-
-  setupDragReorder(folders.length);
-}
-
-// ── D&D Reorder (desktop: HTML5, mobile: touch) ──
-let dragSrcIdx = null;
-
-function setupDragReorder(folderCount) {
-  // Store folderCount for event delegation (set fresh each render)
-  App._sortFolderCount = folderCount;
-}
-
-// Called once in setupEvents — all D&D via event delegation
-function initDragReorder() {
-  const grid = $('#grid');
-
-  // ── HTML5 DnD (desktop) ──
-  grid.addEventListener('dragstart', e => {
-    if (!App.sortModeActive) return;
-    const item = e.target.closest('.grid-item.sortable');
-    if (!item) { e.preventDefault(); return; }
-    dragSrcIdx = parseInt(item.dataset.index) - App._sortFolderCount;
-    item.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', '');
-  });
-  grid.addEventListener('dragend', e => {
-    const item = e.target.closest('.grid-item');
-    if (item) item.classList.remove('dragging');
-    document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => {
-      el.classList.remove('drag-over-before', 'drag-over-after');
-    });
-    dragSrcIdx = null;
-  });
-  grid.addEventListener('dragover', e => {
-    if (!App.sortModeActive || dragSrcIdx === null) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const item = e.target.closest('.grid-item.sortable');
-    if (!item) return;
-    document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => {
-      el.classList.remove('drag-over-before', 'drag-over-after');
-    });
-    const rect = item.getBoundingClientRect();
-    const mid = rect.left + rect.width / 2;
-    if (e.clientX < mid) item.classList.add('drag-over-before');
-    else item.classList.add('drag-over-after');
-  });
-  grid.addEventListener('drop', e => {
-    if (!App.sortModeActive || dragSrcIdx === null) return;
-    e.preventDefault();
-    const item = e.target.closest('.grid-item.sortable');
-    if (!item) return;
-    const dropIdx = parseInt(item.dataset.index) - App._sortFolderCount;
-    if (dropIdx === dragSrcIdx) return;
-    const rect = item.getBoundingClientRect();
-    const mid = rect.left + rect.width / 2;
-    reorderFiles(dragSrcIdx, dropIdx, e.clientX < mid);
-    document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => {
-      el.classList.remove('drag-over-before', 'drag-over-after');
-    });
-  });
-
-  // ── Touch DnD (mobile) ──
-  let touchSrcIdx = null, touchClone = null, touchLP = null;
-
-  grid.addEventListener('touchstart', e => {
-    if (!App.sortModeActive) return;
-    const item = e.target.closest('.grid-item.sortable');
-    if (!item) return;
-    touchLP = setTimeout(() => {
-      touchSrcIdx = parseInt(item.dataset.index) - App._sortFolderCount;
-      item.classList.add('dragging');
-      touchClone = item.cloneNode(true);
-      touchClone.className = 'touch-drag-clone';
-      touchClone.style.width = item.offsetWidth + 'px';
-      touchClone.style.height = item.offsetHeight + 'px';
-      document.body.appendChild(touchClone);
-      posClone(e.touches[0]);
-    }, 400);
-  }, { passive: true });
-
-  grid.addEventListener('touchmove', e => {
-    if (touchClone) {
-      e.preventDefault();
-      posClone(e.touches[0]);
-      document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => {
-        el.classList.remove('drag-over-before', 'drag-over-after');
-      });
-      const under = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY);
-      const item = under?.closest('.grid-item.sortable');
-      if (item) {
-        const rect = item.getBoundingClientRect();
-        if (e.touches[0].clientX < rect.left + rect.width / 2) item.classList.add('drag-over-before');
-        else item.classList.add('drag-over-after');
-      }
-    } else {
-      clearTimeout(touchLP);
-    }
-  }, { passive: false });
-
-  grid.addEventListener('touchend', e => {
-    clearTimeout(touchLP);
-    if (touchClone && touchSrcIdx !== null) {
-      const under = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
-      const item = under?.closest('.grid-item.sortable');
-      if (item) {
-        const dropIdx = parseInt(item.dataset.index) - App._sortFolderCount;
-        if (dropIdx !== touchSrcIdx) {
-          const rect = item.getBoundingClientRect();
-          reorderFiles(touchSrcIdx, dropIdx, e.changedTouches[0].clientX < rect.left + rect.width / 2);
-        }
-      }
-      touchClone.remove(); touchClone = null;
-      document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after').forEach(el => {
-        el.classList.remove('dragging', 'drag-over-before', 'drag-over-after');
-      });
-      touchSrcIdx = null;
-    }
-  });
-
-  function posClone(t) { if (touchClone) { touchClone.style.left = (t.clientX - 40) + 'px'; touchClone.style.top = (t.clientY - 40) + 'px'; } }
-}
-
-function reorderFiles(fromIdx, toIdx, before) {
-  const item = App.sortedFiles.splice(fromIdx, 1)[0];
-  let insertAt = toIdx;
-  if (fromIdx < toIdx) insertAt--;
-  if (!before) insertAt++;
-  App.sortedFiles.splice(insertAt, 0, item);
-  renderSortableGrid();
 }
 
 // ── Batch Rename ──
 function openBatchRename() {
-  if (!App.sortedFiles.length) { toast('ファイルがありません'); return; }
-  $('#preset-select').value = 'nnn';
-  $('#prefix-input').value = '';
-  $('#custom-input').value = '';
-  $('#prefix-row').classList.remove('show');
-  $('#custom-row').style.display = 'none';
-  updateRenamePreview();
-  $('#modal-batch-rename').classList.add('show');
+  const files = selectedFileEntries(); if (!files.length) { toast('ファイルを選択してください'); return; }
+  $('#batch-count').textContent = files.length;
+  $('#preset-select').value = 'nnn'; $('#prefix-input').value = ''; $('#custom-input').value = '';
+  $('#prefix-row').style.display = 'none'; $('#custom-row').style.display = 'none';
+  updateRenamePreview(); $('#modal-batch-rename').classList.add('show');
 }
-
 function updateRenamePreview() {
-  const files = App.sortedFiles;
-  const preset = $('#preset-select').value;
-  const prefix = $('#prefix-input').value.trim();
-  const customPat = $('#custom-input').value.trim();
-  const preview = $('#rename-preview');
-
-  const newNames = files.map((f, i) => {
-    const e = ext(f.name);
-    const num = i + 1;
-    switch (preset) {
-      case 'nnn': return pad(num, 3) + (e ? '.' + e : '');
-      case 'nn': return pad(num, 2) + (e ? '.' + e : '');
-      case 'prefix_nnn': return (prefix || 'file') + '_' + pad(num, 3) + (e ? '.' + e : '');
-      case 'custom': return applyCustom(customPat, num, e, f.name);
-      default: return f.name;
-    }
-  });
-
-  preview.innerHTML = files.map((f, i) => `
-    <div class="rp-row">
-      <span class="rp-old">${f.name}</span>
-      <span class="rp-arrow">→</span>
-      <span class="rp-new">${newNames[i]}</span>
-    </div>
-  `).join('');
+  const files = selectedFileEntries(), preset = $('#preset-select').value, prefix = $('#prefix-input').value.trim(), custom = $('#custom-input').value.trim();
+  const names = files.map((f, i) => { const e = ext(f.name), n = i + 1; switch(preset) {
+    case 'nnn': return pad(n,3)+(e?'.'+e:''); case 'nn': return pad(n,2)+(e?'.'+e:'');
+    case 'prefix_nnn': return (prefix||'file')+'_'+pad(n,3)+(e?'.'+e:'');
+    case 'custom': return applyCust(custom,n,e,f.name); default: return f.name; }});
+  $('#rename-preview').innerHTML = files.map((f,i) => `<div class="rp-row"><span class="rp-old">${f.name}</span><span class="rp-arrow">→</span><span class="rp-new">${names[i]}</span></div>`).join('');
 }
-
-function pad(n, digits) {
-  return String(n).padStart(digits, '0');
-}
-
-function applyCustom(pattern, num, e, origName) {
-  if (!pattern) return origName;
-  return pattern
-    .replace('{NNN}', pad(num, 3))
-    .replace('{NN}', pad(num, 2))
-    .replace('{N}', String(num))
-    .replace('{ext}', e)
-    .replace('{name}', origName.replace(/\.[^.]+$/, ''));
-}
+function pad(n, d) { return String(n).padStart(d, '0'); }
+function applyCust(p, n, e, orig) { return (p||orig).replace('{NNN}',pad(n,3)).replace('{NN}',pad(n,2)).replace('{N}',n).replace('{ext}',e).replace('{name}',orig.replace(/\.[^.]+$/,'')); }
 
 async function executeBatchRename() {
-  const files = App.sortedFiles;
-  const preset = $('#preset-select').value;
-  const prefix = $('#prefix-input').value.trim();
-  const customPat = $('#custom-input').value.trim();
+  const files = selectedFileEntries(), preset = $('#preset-select').value, prefix = $('#prefix-input').value.trim(), custom = $('#custom-input').value.trim();
+  const names = files.map((f,i) => { const e = ext(f.name), n = i+1; switch(preset) {
+    case 'nnn': return pad(n,3)+(e?'.'+e:''); case 'nn': return pad(n,2)+(e?'.'+e:'');
+    case 'prefix_nnn': return (prefix||'file')+'_'+pad(n,3)+(e?'.'+e:'');
+    case 'custom': return applyCust(custom,n,e,f.name); default: return f.name; }});
+  const renames = files.map((f,i) => ({ entry: f, newName: names[i] })).filter(r => r.entry.name !== r.newName);
+  if (!renames.length) { toast('変更なし'); return; }
+  if (!confirm(`${renames.length}件リネームしますか？`)) return;
+  $('#modal-batch-rename').classList.remove('show'); toast('リネーム中...');
+  const undo = []; let fail = 0;
+  // Pass 1: to temp
+  for (let i = 0; i < renames.length; i++) {
+    const r = renames[i], rel = entryRelPath(r.entry), par = parentPath(rel);
+    const tmp = (par ? par + '/' : '') + '__tmp_' + i + '_' + r.newName;
+    try { await App.storage.move(rel, tmp); r._tmp = tmp; undo.push({ from: null, origRel: rel }); } catch(_) { fail++; r._tmp = null; }
+  }
+  // Pass 2: to final
+  for (let i = 0; i < renames.length; i++) {
+    if (!renames[i]._tmp) continue;
+    const par = parentPath(renames[i]._tmp), fin = (par ? par + '/' : '') + renames[i].newName;
+    try { await App.storage.move(renames[i]._tmp, fin); undo[i].from = fin; } catch(_) { fail++; }
+  }
+  App.undoHistory = { entries: undo.filter(u => u.from) }; updateUndoBtn();
+  toast(fail ? `完了（${fail}件エラー）` : `${renames.length}件リネーム完了`);
+  loadFolder(App.currentPath);
+}
+function updateUndoBtn() { $('#btn-undo').style.display = (App.undoHistory?.entries?.length) ? '' : 'none'; }
+async function undoRename() {
+  const ents = App.undoHistory?.entries; if (!ents?.length || !confirm(`${ents.length}件のリネームを元に戻しますか？`)) return;
+  toast('元に戻しています...'); let fail = 0;
+  for (let i = 0; i < ents.length; i++) { const par = parentPath(ents[i].from), tmp = (par?par+'/':'') + '__undo_'+i+'_'+baseName(ents[i].origRel); try { await App.storage.move(ents[i].from, tmp); ents[i]._tmp = tmp; } catch(_) { fail++; ents[i]._tmp = null; } }
+  for (let i = 0; i < ents.length; i++) { if (!ents[i]._tmp) continue; try { await App.storage.move(ents[i]._tmp, ents[i].origRel); } catch(_) { fail++; } }
+  App.undoHistory = null; updateUndoBtn();
+  toast(fail ? `元に戻す完了（${fail}件エラー）` : '元に戻しました'); loadFolder(App.currentPath);
+}
 
-  const newNames = files.map((f, i) => {
-    const e = ext(f.name);
-    const num = i + 1;
-    switch (preset) {
-      case 'nnn': return pad(num, 3) + (e ? '.' + e : '');
-      case 'nn': return pad(num, 2) + (e ? '.' + e : '');
-      case 'prefix_nnn': return (prefix || 'file') + '_' + pad(num, 3) + (e ? '.' + e : '');
-      case 'custom': return applyCustom(customPat, num, e, f.name);
-      default: return f.name;
-    }
+// ── D&D Reorder (always-on for files) ──
+let dragSrcIdx = null;
+function initDragReorder() {
+  const grid = $('#grid');
+  grid.addEventListener('dragstart', e => {
+    const item = e.target.closest('.grid-item[data-tag="file"]'); if (!item) { e.preventDefault(); return; }
+    dragSrcIdx = parseInt(item.dataset.index);
+    // If dragging a selected item, drag all selected; otherwise just this one
+    if (!App.selected.has(dragSrcIdx)) { App.selected.clear(); App.selected.add(dragSrcIdx); updateSelectionUI(); }
+    item.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', '');
+  });
+  grid.addEventListener('dragend', e => { document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after')); dragSrcIdx = null; });
+  grid.addEventListener('dragover', e => {
+    if (dragSrcIdx === null) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    const item = e.target.closest('.grid-item[data-tag="file"]'); if (!item) return;
+    document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => el.classList.remove('drag-over-before','drag-over-after'));
+    const rect = item.getBoundingClientRect();
+    (e.clientX < rect.left + rect.width/2) ? item.classList.add('drag-over-before') : item.classList.add('drag-over-after');
+  });
+  grid.addEventListener('drop', e => {
+    e.preventDefault(); if (dragSrcIdx === null) return;
+    const item = e.target.closest('.grid-item[data-tag="file"]'); if (!item) return;
+    const dropIdx = parseInt(item.dataset.index);
+    const rect = item.getBoundingClientRect(), before = e.clientX < rect.left + rect.width/2;
+    reorderEntries(dropIdx, before);
+    document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => el.classList.remove('drag-over-before','drag-over-after'));
   });
 
-  // Check if any renames needed
-  const renames = [];
-  for (let i = 0; i < files.length; i++) {
-    if (files[i].name !== newNames[i]) {
-      renames.push({ entry: files[i], newName: newNames[i] });
+  // Touch D&D
+  let tSrc = null, tClone = null, tLP = null;
+  grid.addEventListener('touchstart', e => {
+    const item = e.target.closest('.grid-item[data-tag="file"]'); if (!item) return;
+    tLP = setTimeout(() => {
+      tSrc = parseInt(item.dataset.index);
+      if (!App.selected.has(tSrc)) { App.selected.clear(); App.selected.add(tSrc); updateSelectionUI(); }
+      item.classList.add('dragging');
+      tClone = item.cloneNode(true); tClone.className = 'touch-drag-clone';
+      tClone.style.width = item.offsetWidth + 'px'; tClone.style.height = item.offsetHeight + 'px';
+      document.body.appendChild(tClone); posC(e.touches[0]);
+    }, 400);
+  }, { passive: true });
+  grid.addEventListener('touchmove', e => {
+    if (tClone) { e.preventDefault(); posC(e.touches[0]);
+      document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => el.classList.remove('drag-over-before','drag-over-after'));
+      const under = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.grid-item[data-tag="file"]');
+      if (under) { const r = under.getBoundingClientRect(); (e.touches[0].clientX < r.left+r.width/2) ? under.classList.add('drag-over-before') : under.classList.add('drag-over-after'); }
+    } else clearTimeout(tLP);
+  }, { passive: false });
+  grid.addEventListener('touchend', e => {
+    clearTimeout(tLP);
+    if (tClone && tSrc !== null) {
+      const under = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY)?.closest('.grid-item[data-tag="file"]');
+      if (under) { const di = parseInt(under.dataset.index), r = under.getBoundingClientRect(); if (di !== tSrc) reorderEntries(di, e.changedTouches[0].clientX < r.left + r.width/2); }
+      tClone.remove(); tClone = null;
+      document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after'));
+      tSrc = null;
     }
-  }
-  if (!renames.length) { toast('変更なし'); return; }
-
-  if (!confirm(`${renames.length}件のファイルをリネームしますか？`)) return;
-
-  $('#modal-batch-rename').classList.remove('show');
-  toast('リネーム中...');
-
-  // 2-pass rename to avoid collisions
-  // Pass 1: rename to temp names
-  const tempPrefix = '__filer_tmp_';
-  const undoEntries = [];
-  let failCount = 0;
-
-  try {
-    for (let i = 0; i < renames.length; i++) {
-      const r = renames[i];
-      const rel = entryRelPath(r.entry);
-      const par = parentPath(rel);
-      const tempName = tempPrefix + i + '_' + r.newName;
-      const tempRel = par ? par + '/' + tempName : tempName;
-      try {
-        await App.storage.move(rel, tempRel);
-        renames[i]._tempRel = tempRel;
-        undoEntries.push({ from: tempRel, origRel: rel, newName: r.newName });
-      } catch(e) {
-        console.error('Rename pass 1 failed:', r.entry.name, e);
-        failCount++;
-        renames[i]._tempRel = null;
-      }
-    }
-
-    // Pass 2: rename from temp to final
-    for (let i = 0; i < renames.length; i++) {
-      if (!renames[i]._tempRel) continue;
-      const rel = renames[i]._tempRel;
-      const par = parentPath(rel);
-      const finalRel = par ? par + '/' + renames[i].newName : renames[i].newName;
-      try {
-        await App.storage.move(rel, finalRel);
-        undoEntries[i].finalRel = finalRel;
-      } catch(e) {
-        console.error('Rename pass 2 failed:', renames[i].newName, e);
-        failCount++;
-      }
-    }
-
-    // Store undo info
-    App.undoHistory = {
-      entries: undoEntries.filter(u => u.finalRel).map(u => ({
-        from: u.finalRel,
-        to: u.origRel,
-      })),
-    };
-
-    if (failCount > 0) {
-      toast(`完了（${failCount}件エラー）`);
-    } else {
-      toast(`${renames.length}件リネーム完了`);
-    }
-  } catch(e) {
-    toast('リネームエラー: ' + e.message);
-  }
-
-  exitSortMode();
-  loadFolder(App.currentPath);
-  updateUndoBtn();
+  });
+  function posC(t) { if (tClone) { tClone.style.left = (t.clientX-40)+'px'; tClone.style.top = (t.clientY-40)+'px'; } }
 }
 
-function updateUndoBtn() {
-  $('#btn-undo').style.display = (App.undoHistory && App.undoHistory.entries.length) ? '' : 'none';
+function reorderEntries(dropIdx, before) {
+  // Get selected indices (files only), sorted
+  const selIndices = [...App.selected].filter(i => App.entries[i]?.['.tag'] === 'file').sort((a,b) => a - b);
+  if (!selIndices.length) return;
+  // Remove dragged items
+  const dragged = selIndices.map(i => App.entries[i]);
+  const remaining = App.entries.filter((_, i) => !selIndices.includes(i));
+  // Find insertion point in remaining array
+  const dropEntry = App.entries[dropIdx];
+  let insertAt = remaining.indexOf(dropEntry);
+  if (insertAt === -1) insertAt = remaining.length;
+  if (!before) insertAt++;
+  // Insert
+  remaining.splice(insertAt, 0, ...dragged);
+  App.entries = remaining;
+  // Update selection to new indices
+  App.selected.clear();
+  dragged.forEach(d => { const ni = App.entries.indexOf(d); if (ni >= 0) App.selected.add(ni); });
+  renderGrid(App.navGen);
 }
 
-async function undoRename() {
-  if (!App.undoHistory || !App.undoHistory.entries.length) {
-    toast('元に戻す操作がありません');
-    return;
-  }
-  if (!confirm(`${App.undoHistory.entries.length}件のリネームを元に戻しますか？`)) return;
-
-  toast('元に戻しています...');
-  let failCount = 0;
-
-  // Reverse: move from final name back to original
-  // Also 2-pass to avoid collision
-  const entries = App.undoHistory.entries;
-  const tempPrefix = '__filer_undo_';
-
-  // Pass 1: final → temp
-  for (let i = 0; i < entries.length; i++) {
-    const u = entries[i];
-    const tempRel = parentPath(u.from) ? parentPath(u.from) + '/' + tempPrefix + i + '_' + baseName(u.to) : tempPrefix + i + '_' + baseName(u.to);
-    try {
-      await App.storage.move(u.from, tempRel);
-      entries[i]._tempRel = tempRel;
-    } catch(e) { failCount++; entries[i]._tempRel = null; }
-  }
-
-  // Pass 2: temp → original
-  for (let i = 0; i < entries.length; i++) {
-    if (!entries[i]._tempRel) continue;
-    try {
-      await App.storage.move(entries[i]._tempRel, entries[i].to);
-    } catch(e) { failCount++; }
-  }
-
-  App.undoHistory = null;
-  if (failCount > 0) toast(`元に戻す完了（${failCount}件エラー）`);
-  else toast('元に戻しました');
-
-  updateUndoBtn();
-  loadFolder(App.currentPath);
-}
-
-// ════════════════════════════════════════
-// Image Viewer
-// ════════════════════════════════════════
+// ── Image Viewer ──
 function openViewer(entry) {
   App.viewerImages = App.entries.filter(e => e['.tag'] === 'file' && IMG_EXT.has(ext(e.name)));
-  const idx = App.viewerImages.indexOf(entry);
-  if (idx === -1) return;
-  App.viewerIndex = idx;
-  App.viewerVisible = true;
-
-  // Clear previous image immediately
-  const img = $('#viewer-img');
-  img.removeAttribute('src');
-  img.classList.add('loading');
-
-  $('#viewer').classList.add('active');
-  showViewerBar();
-  loadViewerPage(idx);
-  updateViewerSlider();
+  const idx = App.viewerImages.indexOf(entry); if (idx === -1) return;
+  App.viewerIndex = idx; App.viewerVisible = true;
+  const img = $('#viewer-img'); img.removeAttribute('src'); img.classList.add('loading');
+  $('#viewer').classList.add('active'); showViewerBar(); loadViewerPage(idx); updateVSlider();
   history.pushState({ viewer: true }, '', location.hash);
 }
-
-function closeViewer() {
-  if (!App.viewerVisible) return;
-  App.viewerVisible = false;
-  $('#viewer').classList.remove('active');
-  // Clear image to prevent flash next time
-  $('#viewer-img').removeAttribute('src');
-  // Revoke prefetch URLs
-  for (const u of Object.values(App.prefetchCache)) URL.revokeObjectURL(u);
-  App.prefetchCache = {};
-}
-
-let viewerLoadGen = 0;
+function closeViewer() { if (!App.viewerVisible) return; App.viewerVisible = false; $('#viewer').classList.remove('active'); $('#viewer-img').removeAttribute('src'); for (const u of Object.values(App.prefetchCache)) URL.revokeObjectURL(u); App.prefetchCache = {}; }
+let vGen = 0;
 async function loadViewerPage(idx) {
   if (idx < 0 || idx >= App.viewerImages.length) return;
-  App.viewerIndex = idx;
-  const entry = App.viewerImages[idx];
-  const rel = entryRelPath(entry);
-  const img = $('#viewer-img');
-  const gen = ++viewerLoadGen;
-
-  $('#viewer-title').textContent = entry.name;
-  updateViewerSlider();
-
-  // Clear old src immediately, show loading
-  img.removeAttribute('src');
-  img.classList.add('loading');
-
-  try {
-    let url = App.prefetchCache[rel];
-    if (!url) {
-      const buf = await App.storage.loadBinary(rel);
-      if (gen !== viewerLoadGen) return; // stale
-      const e = ext(entry.name);
-      const mime = e === 'svg' ? 'image/svg+xml' : 'image/' + (e === 'jpg' ? 'jpeg' : e);
-      url = URL.createObjectURL(new Blob([buf], { type: mime }));
-    }
-    if (gen !== viewerLoadGen) return;
-    img.src = url;
-    img.onload = () => { if (gen === viewerLoadGen) img.classList.remove('loading'); };
-  } catch(e) {
-    if (gen === viewerLoadGen) img.classList.remove('loading');
-  }
-
-  // Prefetch neighbors (fire and forget, don't block)
-  prefetchViewer(idx);
+  App.viewerIndex = idx; const entry = App.viewerImages[idx], rel = entryRelPath(entry), img = $('#viewer-img'), g = ++vGen;
+  $('#viewer-title').textContent = entry.name; updateVSlider(); img.removeAttribute('src'); img.classList.add('loading');
+  try { let u = App.prefetchCache[rel]; if (!u) { const buf = await App.storage.loadBinary(rel); if (g !== vGen) return; const e = ext(entry.name), mime = e === 'svg' ? 'image/svg+xml' : 'image/'+(e==='jpg'?'jpeg':e); u = URL.createObjectURL(new Blob([buf], { type: mime })); }
+    if (g !== vGen) return; img.src = u; img.onload = () => { if (g === vGen) img.classList.remove('loading'); };
+  } catch(_) { if (g === vGen) img.classList.remove('loading'); }
+  prefetchV(idx);
 }
-
-async function prefetchViewer(cur) {
-  // Prefetch ±3 pages for smoother navigation
-  for (const off of [1, -1, 2, -2, 3, -3]) {
-    const i = cur + off;
-    if (i < 0 || i >= App.viewerImages.length) continue;
-    const rel = entryRelPath(App.viewerImages[i]);
-    if (App.prefetchCache[rel]) continue;
-    try {
-      const buf = await App.storage.loadBinary(rel);
-      const e = ext(App.viewerImages[i].name);
-      const mime = e === 'svg' ? 'image/svg+xml' : 'image/' + (e === 'jpg' ? 'jpeg' : e);
-      App.prefetchCache[rel] = URL.createObjectURL(new Blob([buf], { type: mime }));
-    } catch(_) {}
-  }
-}
-
-function viewerPrev() { if (App.viewerIndex > 0) loadViewerPage(App.viewerIndex - 1); }
-function viewerNext() { if (App.viewerIndex < App.viewerImages.length - 1) loadViewerPage(App.viewerIndex + 1); }
-
-function updateViewerSlider() {
-  const s = $('#viewer-slider');
-  s.max = App.viewerImages.length - 1;
-  s.value = App.viewerIndex;
-  $('#viewer-page-label').textContent = `${App.viewerIndex + 1} / ${App.viewerImages.length}`;
-}
-
-function showViewerBar() {
-  $('#viewer-topbar').classList.add('visible');
-  $('#viewer-bottombar').classList.add('visible');
-  clearTimeout(App.toolbarTimer);
-  App.toolbarTimer = setTimeout(() => {
-    if (App.viewerVisible) {
-      $('#viewer-topbar').classList.remove('visible');
-      $('#viewer-bottombar').classList.remove('visible');
-    }
-  }, 3000);
-}
+async function prefetchV(cur) { for (const off of [1,-1,2,-2,3,-3]) { const i = cur+off; if (i<0||i>=App.viewerImages.length) continue; const rel = entryRelPath(App.viewerImages[i]); if (App.prefetchCache[rel]) continue; try { const buf = await App.storage.loadBinary(rel); const e = ext(App.viewerImages[i].name), mime = e==='svg'?'image/svg+xml':'image/'+(e==='jpg'?'jpeg':e); App.prefetchCache[rel] = URL.createObjectURL(new Blob([buf], { type: mime })); } catch(_) {} } }
+function vPrev() { if (App.viewerIndex > 0) loadViewerPage(App.viewerIndex - 1); }
+function vNext() { if (App.viewerIndex < App.viewerImages.length - 1) loadViewerPage(App.viewerIndex + 1); }
+function updateVSlider() { const s = $('#viewer-slider'); s.max = App.viewerImages.length-1; s.value = App.viewerIndex; $('#viewer-page-label').textContent = `${App.viewerIndex+1} / ${App.viewerImages.length}`; }
+function showViewerBar() { $('#viewer-topbar').classList.add('visible'); $('#viewer-bottombar').classList.add('visible'); clearTimeout(App.toolbarTimer); App.toolbarTimer = setTimeout(() => { if (App.viewerVisible) { $('#viewer-topbar').classList.remove('visible'); $('#viewer-bottombar').classList.remove('visible'); } }, 3000); }
 
 // ════════════════════════════════════════
 // Events
 // ════════════════════════════════════════
 function setupEvents() {
-  // Nav buttons
   $('#btn-back').onclick = () => history.back();
   $('#btn-forward').onclick = () => history.forward();
   $('#btn-up').onclick = () => { if (App.currentPath) navigate(parentPath(App.currentPath)); };
   $('#btn-refresh').onclick = () => loadFolder(App.currentPath);
   $('#btn-disconnect').onclick = () => App.storage.disconnect();
-  $('#btn-sidebar').onclick = () => {
-    const sb = $('#sidebar');
-    const isMobile = window.innerWidth <= 700;
-    if (isMobile) {
-      sb.classList.toggle('mobile-open');
-    } else {
-      sb.classList.toggle('hidden');
-      IDB.put('settings', 'sidebarHidden', sb.classList.contains('hidden'));
-    }
-  };
+  $('#btn-sidebar').onclick = () => { const sb = $('#sidebar'), mob = innerWidth <= 700; if (mob) sb.classList.toggle('mobile-open'); else { sb.classList.toggle('hidden'); IDB.put('settings','sidebarHidden', sb.classList.contains('hidden')); } };
+  $('#btn-select-all').onclick = selectAll;
+  $('#btn-undo').onclick = undoRename;
 
-  // Breadcrumb
-  $('#breadcrumb').addEventListener('click', e => {
-    const item = e.target.closest('.bc-item');
-    if (item && !item.classList.contains('current')) navigate(item.dataset.path);
-  });
-
-  // Sort
-  $('#sort-select').onchange = e => {
-    App.sortMode = e.target.value;
-    IDB.put('settings', 'sortMode', App.sortMode);
-    App.entries = sortEntries(App.entries);
-    renderGrid(App.navGen);
-  };
-
-  // Thumb slider
-  $('#thumb-slider').oninput = e => {
-    App.thumbSize = parseInt(e.target.value);
-    document.documentElement.style.setProperty('--thumb-size', App.thumbSize);
-    IDB.put('settings', 'thumbSize', App.thumbSize);
-  };
-
-  // Favorites
+  $('#breadcrumb').addEventListener('click', e => { const item = e.target.closest('.bc-item'); if (item && !item.classList.contains('current')) navigate(item.dataset.path); });
+  $('#sort-select').onchange = e => { App.sortMode = e.target.value; IDB.put('settings','sortMode', App.sortMode); App.entries = sortEntries(App.entries); renderGrid(App.navGen); };
+  $('#thumb-slider').oninput = e => { App.thumbSize = parseInt(e.target.value); document.documentElement.style.setProperty('--thumb-size', App.thumbSize); IDB.put('settings','thumbSize', App.thumbSize); };
   $('#btn-add-fav').onclick = () => addFavorite(App.currentPath);
-  $('#fav-list').addEventListener('click', e => {
-    const rm = e.target.closest('.fav-remove');
-    if (rm) { removeFavorite(parseInt(rm.dataset.index)); return; }
-    const item = e.target.closest('.fav-item');
-    if (item) { navigate(item.dataset.path); $('#sidebar').classList.remove('mobile-open'); }
-  });
+  $('#fav-list').addEventListener('click', e => { const rm = e.target.closest('.fav-remove'); if (rm) { removeFavorite(parseInt(rm.dataset.index)); return; } const item = e.target.closest('.fav-item'); if (item) { navigate(item.dataset.path); $('#sidebar').classList.remove('mobile-open'); } });
 
-  // Grid double click / double tap
+  // Grid click: select + double-click open
   let lastTapT = 0, lastTapEl = null;
   $('#grid').addEventListener('click', e => {
-    const item = e.target.closest('.grid-item');
-    if (!item) return;
-    const now = Date.now();
+    const item = e.target.closest('.grid-item'); if (!item) { clearSelection(); return; }
+    const idx = parseInt(item.dataset.index), now = Date.now();
+    // Double tap / double click
     if (now - lastTapT < 350 && lastTapEl === item) { handleOpen(item); lastTapT = 0; return; }
     lastTapT = now; lastTapEl = item;
+    toggleSelect(idx, e.ctrlKey || e.metaKey, e.shiftKey);
   });
-  $('#grid').addEventListener('dblclick', e => {
-    const item = e.target.closest('.grid-item');
-    if (item) handleOpen(item);
-  });
+  $('#grid').addEventListener('dblclick', e => { const item = e.target.closest('.grid-item'); if (item) handleOpen(item); });
 
   // Context menu
   $('#grid').addEventListener('contextmenu', e => {
-    const item = e.target.closest('.grid-item');
-    if (!item) return;
-    e.preventDefault();
-    const entry = App.entries[parseInt(item.dataset.index)];
-    if (entry) showCtx(e.clientX, e.clientY, entry);
+    const item = e.target.closest('.grid-item'); if (!item) return; e.preventDefault();
+    const idx = parseInt(item.dataset.index), entry = App.entries[idx]; if (!entry) return;
+    // If right-clicking a selected item with multi-selection, show multi menu
+    if (App.selected.has(idx) && App.selected.size > 1) { showCtx(e.clientX, e.clientY, entry, true); }
+    else { if (!App.selected.has(idx)) { App.selected.clear(); App.selected.add(idx); updateSelectionUI(); } showCtx(e.clientX, e.clientY, entry, false); }
   });
+  // Long press (mobile)
   let lpT = null;
   $('#grid').addEventListener('touchstart', e => {
-    if (App.sortModeActive) return; // D&D handles touch in sort mode
-    const item = e.target.closest('.grid-item');
-    if (!item) return;
+    const item = e.target.closest('.grid-item'); if (!item) return;
     lpT = setTimeout(() => {
-      const entry = App.entries[parseInt(item.dataset.index)];
-      if (entry) showCtx(e.touches[0].clientX, e.touches[0].clientY, entry);
+      const idx = parseInt(item.dataset.index), entry = App.entries[idx]; if (!entry) return;
+      if (App.selected.has(idx) && App.selected.size > 1) showCtx(e.touches[0].clientX, e.touches[0].clientY, entry, true);
+      else { if (!App.selected.has(idx)) { App.selected.clear(); App.selected.add(idx); updateSelectionUI(); } showCtx(e.touches[0].clientX, e.touches[0].clientY, entry, false); }
     }, 500);
   }, { passive: true });
   $('#grid').addEventListener('touchend', () => clearTimeout(lpT));
   $('#grid').addEventListener('touchmove', () => clearTimeout(lpT));
 
   document.addEventListener('click', e => { if (!e.target.closest('#ctx-menu')) hideCtx(); });
-  $('#ctx-menu').addEventListener('click', e => {
-    const item = e.target.closest('.ctx-item');
-    if (item) doCtx(item.dataset.action);
-  });
+  $('#ctx-menu').addEventListener('click', e => { const item = e.target.closest('.ctx-item'); if (item) doCtx(item.dataset.action); });
 
-  // Rename
-  $('#rename-ok').onclick = execRename;
-  $('#rename-cancel').onclick = () => $('#modal-rename').classList.remove('show');
-  $('#rename-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') execRename();
-    if (e.key === 'Escape') $('#modal-rename').classList.remove('show');
-  });
-
-  // Phase 2: Sort mode
-  $('#btn-sort-mode').onclick = () => {
-    if (App.sortModeActive) exitSortMode();
-    else enterSortMode();
-  };
-  $('#btn-sort-cancel').onclick = exitSortMode;
-  $('#btn-sort-reset').onclick = resetSortOrder;
-  $('#btn-rename-exec').onclick = openBatchRename;
-  $('#btn-undo').onclick = undoRename;
+  // Rename modal
+  $('#rename-ok').onclick = execRename; $('#rename-cancel').onclick = () => $('#modal-rename').classList.remove('show');
+  $('#rename-input').addEventListener('keydown', e => { if (e.key==='Enter') execRename(); if (e.key==='Escape') $('#modal-rename').classList.remove('show'); });
 
   // Batch rename modal
   $('#batch-cancel').onclick = () => $('#modal-batch-rename').classList.remove('show');
   $('#batch-exec').onclick = executeBatchRename;
-  $('#preset-select').onchange = () => {
-    const v = $('#preset-select').value;
-    $('#prefix-row').classList.toggle('show', v === 'prefix_nnn');
-    $('#custom-row').style.display = v === 'custom' ? 'flex' : 'none';
-    updateRenamePreview();
-  };
+  $('#preset-select').onchange = () => { const v = $('#preset-select').value; $('#prefix-row').style.display = v==='prefix_nnn'?'flex':'none'; $('#custom-row').style.display = v==='custom'?'flex':'none'; updateRenamePreview(); };
   $('#prefix-input').oninput = updateRenamePreview;
   $('#custom-input').oninput = updateRenamePreview;
 
-  // D&D reorder (one-time delegation setup)
-  initDragReorder();
-
   // Viewer
   $('#viewer-close').onclick = () => { closeViewer(); history.back(); };
-  $('#tap-left').onclick = viewerPrev;
-  $('#tap-right').onclick = viewerNext;
-  $('#tap-center').onclick = showViewerBar;
+  $('#tap-left').onclick = vPrev; $('#tap-right').onclick = vNext; $('#tap-center').onclick = showViewerBar;
   $('#viewer-slider').oninput = e => loadViewerPage(parseInt(e.target.value));
 
   // Keyboard
   document.addEventListener('keydown', e => {
     if (e.target.closest('input')) return;
-    if (App.viewerVisible) {
-      if (e.key === 'Escape') { closeViewer(); history.back(); }
-      else if (e.key === 'ArrowLeft') viewerPrev();
-      else if (e.key === 'ArrowRight') viewerNext();
-      return;
-    }
-    if (e.key === 'Backspace') { e.preventDefault(); if (App.currentPath) navigate(parentPath(App.currentPath)); }
-    if (e.key === 'z' && (e.ctrlKey || e.metaKey) && App.undoHistory) { e.preventDefault(); undoRename(); }
-    if (e.key === 'Escape' && App.sortModeActive) exitSortMode();
+    if (App.viewerVisible) { if (e.key==='Escape') { closeViewer(); history.back(); } else if (e.key==='ArrowLeft') vPrev(); else if (e.key==='ArrowRight') vNext(); return; }
+    if (e.key==='Backspace') { e.preventDefault(); if (App.currentPath) navigate(parentPath(App.currentPath)); }
+    if (e.key==='a' && (e.ctrlKey||e.metaKey)) { e.preventDefault(); selectAll(); }
+    if (e.key==='Escape') clearSelection();
+    if (e.key==='z' && (e.ctrlKey||e.metaKey) && App.undoHistory) { e.preventDefault(); undoRename(); }
   });
 
-  // Viewer swipe
+  // Viewer swipe / mouse / wheel
   let sx = 0;
   $('#viewer-img-wrap').addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
-  $('#viewer-img-wrap').addEventListener('touchend', e => {
-    const dx = e.changedTouches[0].clientX - sx;
-    if (Math.abs(dx) > 50) dx > 0 ? viewerPrev() : viewerNext();
-  });
+  $('#viewer-img-wrap').addEventListener('touchend', e => { const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx)>50) dx > 0 ? vPrev() : vNext(); });
   $('#viewer').addEventListener('mousemove', () => { if (App.viewerVisible) showViewerBar(); });
-
-  // Viewer wheel
   let wCD = false;
-  $('#viewer').addEventListener('wheel', e => {
-    if (!App.viewerVisible || wCD) return;
-    e.preventDefault(); wCD = true;
-    setTimeout(() => wCD = false, 200);
-    e.deltaY > 0 ? viewerNext() : viewerPrev();
-  }, { passive: false });
+  $('#viewer').addEventListener('wheel', e => { if (!App.viewerVisible||wCD) return; e.preventDefault(); wCD=true; setTimeout(()=>wCD=false,200); e.deltaY>0 ? vNext() : vPrev(); }, { passive: false });
 
-  // ── History API: popstate ──
-  window.addEventListener('popstate', () => {
-    if (App.viewerVisible) {
-      closeViewer();
-      return;
-    }
-    const p = pathFromHash() ?? '';
-    if (p !== App.currentPath) {
-      App.currentPath = p;
-      IDB.put('settings', 'lastPath', p);
-      updateNavButtons();
-      renderBreadcrumb();
-      renderFavorites();
-      loadFolder(p);
-    }
-  });
+  // Popstate
+  window.addEventListener('popstate', () => { if (App.viewerVisible) { closeViewer(); return; } const p = pathFromHash() ?? ''; if (p !== App.currentPath) { App.currentPath = p; IDB.put('settings','lastPath',p); $('#btn-up').classList.toggle('disabled',!p); renderBreadcrumb(); renderFavorites(); loadFolder(p); } });
+
+  // D&D (one-time)
+  initDragReorder();
 }
 
 function handleOpen(el) {
-  if (App.sortModeActive) return; // no navigation in sort mode
-  const entry = App.entries[parseInt(el.dataset.index)];
-  if (!entry) return;
+  const entry = App.entries[parseInt(el.dataset.index)]; if (!entry) return;
   if (entry['.tag'] === 'folder') navigate(entryRelPath(entry));
   else if (IMG_EXT.has(ext(entry.name))) openViewer(entry);
 }
 
-// ════════════════════════════════════════
-// Start
-// ════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', init);
 </script>
 </body>
