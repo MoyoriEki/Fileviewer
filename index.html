@@ -35,12 +35,13 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; }
+html, body { height: 100%; overflow: hidden; touch-action: manipulation; }
 body {
   font-family: 'Noto Sans JP', sans-serif;
   background: var(--bg); color: var(--text);
   font-size: 13px; line-height: 1.5;
   -webkit-tap-highlight-color: transparent; user-select: none;
+  touch-action: manipulation;
 }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -156,6 +157,7 @@ body {
   font-size: 13px; color: #fff; line-height: 1;
 }
 .grid-item:hover .grid-check, .grid-item.selected .grid-check { opacity: 1; }
+@media (hover: none) { .grid-check { opacity: 0.7; } }
 .grid-item.selected .grid-check { background: var(--accent); border-color: var(--accent); }
 
 /* Rubber-band selection */
@@ -343,7 +345,8 @@ const App = {
   viewerImages: [], viewerIndex: 0, viewerVisible: false, toolbarTimer: null,
   prefetchCache: {}, navGen: 0,
   // Selection & reorder
-  selected: new Set(), // indices into App.entries
+  selected: new Set(),
+  customOrders: {},    // { path: [names] }
   undoHistory: null,
 };
 
@@ -388,21 +391,117 @@ function entryRelPath(entry) { const a = entry.path_display || entry.path_lower 
 const TQ = { running: 0, max: 6, q: [] };
 function tqRun(fn) { return new Promise((res, rej) => { const exec = () => { TQ.running++; fn().then(res, rej).finally(() => { TQ.running--; if (TQ.q.length) TQ.q.shift()(); }); }; TQ.running < TQ.max ? exec() : TQ.q.push(exec); }); }
 
+// ── Settings Sync (Dropbox + IDB) ──
+const SETTINGS_PATH = 'DropboxFiler-settings.json';
+let settingsSaveTimer = null;
+
+async function loadSettings() {
+  // Try Dropbox first, fall back to IDB
+  let cloud = null;
+  try {
+    const raw = await App.storage.load(SETTINGS_PATH);
+    cloud = JSON.parse(raw);
+  } catch(_) {}
+
+  const local = {
+    thumbSize: await IDB.get('settings','thumbSize'),
+    sortMode: await IDB.get('settings','sortMode'),
+    favorites: await IDB.get('settings','favorites'),
+    lastPath: await IDB.get('settings','lastPath'),
+    sidebarHidden: await IDB.get('settings','sidebarHidden'),
+    customOrders: await IDB.get('settings','customOrders'),
+  };
+
+  // Cloud wins if present, otherwise local
+  const s = cloud || {};
+  const merged = {
+    thumbSize: s.thumbSize ?? local.thumbSize ?? 160,
+    sortMode: s.sortMode ?? local.sortMode ?? 'name_asc',
+    favorites: s.favorites ?? local.favorites ?? [],
+    lastPath: s.lastPath ?? local.lastPath ?? '',
+    sidebarHidden: s.sidebarHidden ?? local.sidebarHidden ?? false,
+    customOrders: s.customOrders ?? local.customOrders ?? {},
+  };
+
+  // Write merged back to IDB
+  IDB.put('settings','thumbSize', merged.thumbSize);
+  IDB.put('settings','sortMode', merged.sortMode);
+  IDB.put('settings','favorites', merged.favorites);
+  IDB.put('settings','lastPath', merged.lastPath);
+  IDB.put('settings','sidebarHidden', merged.sidebarHidden);
+  IDB.put('settings','customOrders', merged.customOrders);
+
+  return merged;
+}
+
+function saveSettings() {
+  // Debounced save to Dropbox
+  clearTimeout(settingsSaveTimer);
+  settingsSaveTimer = setTimeout(async () => {
+    try {
+      const data = {
+        thumbSize: App.thumbSize,
+        sortMode: App.sortMode,
+        favorites: App.favorites,
+        lastPath: App.currentPath,
+        sidebarHidden: $('#sidebar').classList.contains('hidden'),
+        customOrders: App.customOrders || {},
+      };
+      await App.storage.save(SETTINGS_PATH, JSON.stringify(data, null, 2));
+    } catch(e) { console.warn('Settings sync failed:', e); }
+  }, 1500);
+}
+
+function saveSetting(key, value) {
+  IDB.put('settings', key, value);
+  saveSettings();
+}
+
 // ════════════════════════════════════════
 // Init
 // ════════════════════════════════════════
 async function init() {
   await IDB.open();
-  const st = await IDB.get('settings','thumbSize'); if (st) { App.thumbSize = st; $('#thumb-slider').value = st; document.documentElement.style.setProperty('--thumb-size', st); }
-  const ss = await IDB.get('settings','sortMode'); if (ss) { App.sortMode = ss; $('#sort-select').value = ss; }
-  const sf = await IDB.get('settings','favorites'); if (sf) App.favorites = sf;
-  const sp = await IDB.get('settings','lastPath');
-  const sh = await IDB.get('settings','sidebarHidden'); if (sh) $('#sidebar').classList.add('hidden');
+
+  // Load IDB settings for instant display (before Dropbox connects)
+  const localThumb = await IDB.get('settings','thumbSize');
+  if (localThumb) { App.thumbSize = localThumb; $('#thumb-slider').value = localThumb; document.documentElement.style.setProperty('--thumb-size', localThumb); }
+  const localSort = await IDB.get('settings','sortMode');
+  if (localSort) { App.sortMode = localSort; $('#sort-select').value = localSort; }
+  const localFavs = await IDB.get('settings','favorites');
+  if (localFavs) App.favorites = localFavs;
+  const localOrders = await IDB.get('settings','customOrders');
+  App.customOrders = localOrders || {};
+  const localSh = await IDB.get('settings','sidebarHidden');
+  if (localSh) $('#sidebar').classList.add('hidden');
 
   App.storage = new StorageBridge({ basePath: '', storagePrefix: 'dbxfiler', ui: true, uiTarget: '#dbx-ui' });
-  App.storage.on('connected', async () => { $('#connection-screen').style.display = 'none'; $('#app').classList.add('active'); renderFavorites(); await navigate(pathFromHash() ?? sp ?? '', true); });
+
+  App.storage.on('connected', async () => {
+    $('#connection-screen').style.display = 'none';
+    $('#app').classList.add('active');
+    // Load cloud settings (merge with local)
+    const s = await loadSettings();
+    App.thumbSize = s.thumbSize; $('#thumb-slider').value = s.thumbSize; document.documentElement.style.setProperty('--thumb-size', s.thumbSize);
+    App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
+    App.favorites = s.favorites;
+    App.customOrders = s.customOrders || {};
+    if (s.sidebarHidden) $('#sidebar').classList.add('hidden'); else $('#sidebar').classList.remove('hidden');
+    renderFavorites();
+    await navigate(pathFromHash() ?? s.lastPath ?? '', true);
+  });
   App.storage.on('disconnected', () => { $('#connection-screen').style.display = ''; $('#app').classList.remove('active'); });
-  if (App.storage.isConnected) { $('#connection-screen').style.display = 'none'; $('#app').classList.add('active'); renderFavorites(); navigate(pathFromHash() ?? sp ?? '', true); }
+  if (App.storage.isConnected) {
+    $('#connection-screen').style.display = 'none'; $('#app').classList.add('active');
+    const s = await loadSettings();
+    App.thumbSize = s.thumbSize; $('#thumb-slider').value = s.thumbSize; document.documentElement.style.setProperty('--thumb-size', s.thumbSize);
+    App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
+    App.favorites = s.favorites;
+    App.customOrders = s.customOrders || {};
+    if (s.sidebarHidden) $('#sidebar').classList.add('hidden'); else $('#sidebar').classList.remove('hidden');
+    renderFavorites();
+    navigate(pathFromHash() ?? s.lastPath ?? '', true);
+  }
   setupEvents();
 }
 
@@ -415,7 +514,7 @@ function replaceHash(p) { history.replaceState(null, '', '#' + encodeURIComponen
 async function navigate(path, replace) {
   path = (path || '').replace(/^\/+|\/+$/g, '');
   App.currentPath = path; App.selected.clear(); updateSelBadge();
-  IDB.put('settings', 'lastPath', path);
+  saveSetting('lastPath', path);
   replace ? replaceHash(path) : pushHash(path);
   $('#btn-up').classList.toggle('disabled', !path);
   renderBreadcrumb(); renderFavorites();
@@ -429,7 +528,7 @@ async function loadFolder(path) {
     const entries = await App.storage.list(path || '');
     if (gen !== App.navGen) return;
     App.entries = sortEntries(entries);
-    App.entries = await applyCustomOrder(App.entries);
+    App.entries = applyCustomOrder(App.entries);
     App.selected.clear(); updateSelBadge();
     renderGrid(gen);
   } catch(e) { if (gen === App.navGen) grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">⚠</div><div>読み込みエラー</div></div>'; }
@@ -559,8 +658,8 @@ function renderFavorites() {
   if (!App.favorites.length) { l.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:11.5px;text-align:center">お気に入りなし</div>'; return; }
   l.innerHTML = App.favorites.map((f, i) => `<div class="fav-item${App.currentPath===f.path?' active':''}" data-path="${f.path}" data-index="${i}"><span class="fav-icon">📁</span><span class="fav-name" title="${f.path||'ルート'}">${f.name}</span><button class="fav-remove" data-index="${i}" title="削除">✕</button></div>`).join('');
 }
-function addFavorite(p) { if (App.favorites.some(f => f.path === p)) { toast('追加済み'); return; } App.favorites.push({ path: p, name: p ? baseName(p) : 'ルート' }); IDB.put('settings','favorites', App.favorites); renderFavorites(); toast('お気に入りに追加'); }
-function removeFavorite(i) { App.favorites.splice(i, 1); IDB.put('settings','favorites', App.favorites); renderFavorites(); }
+function addFavorite(p) { if (App.favorites.some(f => f.path === p)) { toast('追加済み'); return; } App.favorites.push({ path: p, name: p ? baseName(p) : 'ルート' }); saveSetting('favorites', App.favorites); renderFavorites(); toast('お気に入りに追加'); }
+function removeFavorite(i) { App.favorites.splice(i, 1); saveSetting('favorites', App.favorites); renderFavorites(); }
 
 // ── Context Menu ──
 let ctxTarget = null, ctxIsMulti = false;
@@ -755,28 +854,24 @@ function reorderEntries(dropIdx, before) {
 }
 
 // ── Custom order persistence ──
-function customOrderKey() { return 'order:' + (App.currentPath || '/'); }
+function customOrderKey() { return App.currentPath || '/'; }
 function saveCustomOrder() {
-  // Save order as list of entry names
   const names = App.entries.map(e => e.name);
-  IDB.put('settings', customOrderKey(), names);
+  if (!App.customOrders) App.customOrders = {};
+  App.customOrders[customOrderKey()] = names;
+  saveSetting('customOrders', App.customOrders);
 }
 function applyCustomOrder(entries) {
-  // Attempt to apply saved order; returns reordered entries or original
-  return new Promise(async (resolve) => {
-    const saved = await IDB.get('settings', customOrderKey());
-    if (!saved || !saved.length) { resolve(entries); return; }
-    const byName = new Map();
-    entries.forEach(e => byName.set(e.name, e));
-    const ordered = [];
-    const used = new Set();
-    for (const name of saved) {
-      if (byName.has(name) && !used.has(name)) { ordered.push(byName.get(name)); used.add(name); }
-    }
-    // Append any new entries not in saved order
-    for (const e of entries) { if (!used.has(e.name)) ordered.push(e); }
-    resolve(ordered);
-  });
+  const saved = App.customOrders?.[customOrderKey()];
+  if (!saved || !saved.length) return entries;
+  const byName = new Map();
+  entries.forEach(e => byName.set(e.name, e));
+  const ordered = [], used = new Set();
+  for (const name of saved) {
+    if (byName.has(name) && !used.has(name)) { ordered.push(byName.get(name)); used.add(name); }
+  }
+  for (const e of entries) { if (!used.has(e.name)) ordered.push(e); }
+  return ordered;
 }
 
 // ── Image Viewer ──
@@ -814,31 +909,38 @@ function setupEvents() {
   $('#btn-up').onclick = () => { if (App.currentPath) navigate(parentPath(App.currentPath)); };
   $('#btn-refresh').onclick = () => loadFolder(App.currentPath);
   $('#btn-disconnect').onclick = () => App.storage.disconnect();
-  $('#btn-sidebar').onclick = () => { const sb = $('#sidebar'), mob = innerWidth <= 700; if (mob) sb.classList.toggle('mobile-open'); else { sb.classList.toggle('hidden'); IDB.put('settings','sidebarHidden', sb.classList.contains('hidden')); } };
+  $('#btn-sidebar').onclick = () => { const sb = $('#sidebar'), mob = innerWidth <= 700; if (mob) sb.classList.toggle('mobile-open'); else { sb.classList.toggle('hidden'); saveSetting('sidebarHidden', sb.classList.contains('hidden')); } };
   $('#btn-select-all').onclick = selectAll;
   $('#btn-undo').onclick = undoRename;
 
   $('#breadcrumb').addEventListener('click', e => { const item = e.target.closest('.bc-item'); if (item && !item.classList.contains('current')) navigate(item.dataset.path); });
-  $('#sort-select').onchange = e => { App.sortMode = e.target.value; IDB.put('settings','sortMode', App.sortMode); IDB.put('settings', customOrderKey(), null); App.entries = sortEntries(App.entries); renderGrid(App.navGen); };
-  $('#thumb-slider').oninput = e => { App.thumbSize = parseInt(e.target.value); document.documentElement.style.setProperty('--thumb-size', App.thumbSize); IDB.put('settings','thumbSize', App.thumbSize); };
+  $('#sort-select').onchange = e => { App.sortMode = e.target.value; saveSetting('sortMode', App.sortMode); if (App.customOrders) { delete App.customOrders[customOrderKey()]; saveSetting('customOrders', App.customOrders); } App.entries = sortEntries(App.entries); renderGrid(App.navGen); };
+  $('#thumb-slider').oninput = e => { App.thumbSize = parseInt(e.target.value); document.documentElement.style.setProperty('--thumb-size', App.thumbSize); saveSetting('thumbSize', App.thumbSize); };
   $('#btn-add-fav').onclick = () => addFavorite(App.currentPath);
   $('#fav-list').addEventListener('click', e => { const rm = e.target.closest('.fav-remove'); if (rm) { removeFavorite(parseInt(rm.dataset.index)); return; } const item = e.target.closest('.fav-item'); if (item) { navigate(item.dataset.path); $('#sidebar').classList.remove('mobile-open'); } });
 
-  // Grid click: select + double-click open
+  // Grid click — desktop: dblclick opens, click selects. Mobile: tap opens, checkbox selects.
+  const isTouchDevice = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   let lastTapT = 0, lastTapEl = null;
   $('#grid').addEventListener('click', e => {
-    // Suppress click after lasso
     if (lassoState?.prevented) return;
     
-    // Checkbox click
     const chk = e.target.closest('.grid-check');
-    if (chk) { e.stopPropagation(); const idx = parseInt(chk.dataset.check); toggleSelect(idx, true, false); return; }
+    if (chk) { e.stopPropagation(); toggleSelect(parseInt(chk.dataset.check), true, false); return; }
 
     const item = e.target.closest('.grid-item'); if (!item) { if (!lassoState?.prevented) clearSelection(); return; }
-    const idx = parseInt(item.dataset.index), now = Date.now();
-    if (now - lastTapT < 350 && lastTapEl === item) { handleOpen(item); lastTapT = 0; return; }
-    lastTapT = now; lastTapEl = item;
-    toggleSelect(idx, e.ctrlKey || e.metaKey, e.shiftKey);
+    const idx = parseInt(item.dataset.index);
+
+    if (isTouchDevice()) {
+      // Mobile: single tap opens folder/image
+      handleOpen(item);
+    } else {
+      // Desktop: double-click opens, single click selects
+      const now = Date.now();
+      if (now - lastTapT < 350 && lastTapEl === item) { handleOpen(item); lastTapT = 0; return; }
+      lastTapT = now; lastTapEl = item;
+      toggleSelect(idx, e.ctrlKey || e.metaKey, e.shiftKey);
+    }
   });
 
   // Rubber-band (lasso) selection — starts anywhere in main, threshold 5px
@@ -949,7 +1051,7 @@ function setupEvents() {
   $('#viewer').addEventListener('wheel', e => { if (!App.viewerVisible||wCD) return; e.preventDefault(); wCD=true; setTimeout(()=>wCD=false,200); e.deltaY>0 ? vNext() : vPrev(); }, { passive: false });
 
   // Popstate
-  window.addEventListener('popstate', () => { if (App.viewerVisible) { closeViewer(); return; } const p = pathFromHash() ?? ''; if (p !== App.currentPath) { App.currentPath = p; IDB.put('settings','lastPath',p); $('#btn-up').classList.toggle('disabled',!p); renderBreadcrumb(); renderFavorites(); loadFolder(p); } });
+  window.addEventListener('popstate', () => { if (App.viewerVisible) { closeViewer(); return; } const p = pathFromHash() ?? ''; if (p !== App.currentPath) { App.currentPath = p; saveSetting('lastPath',p); $('#btn-up').classList.toggle('disabled',!p); renderBreadcrumb(); renderFavorites(); loadFolder(p); } });
 
   // D&D (one-time)
   initDragReorder();
