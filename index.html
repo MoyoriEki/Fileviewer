@@ -412,7 +412,6 @@ const SETTINGS_PATH = 'DropboxFiler-settings.json';
 let settingsSaveTimer = null;
 
 async function loadSettings() {
-  // Try Dropbox first, fall back to IDB
   let cloud = null;
   try {
     const raw = await App.storage.load(SETTINGS_PATH);
@@ -428,18 +427,37 @@ async function loadSettings() {
     customOrders: await IDB.get('settings','customOrders'),
   };
 
-  // Cloud wins if present, otherwise local
-  const s = cloud || {};
-  const merged = {
-    thumbSize: s.thumbSize ?? local.thumbSize ?? 160,
-    sortMode: s.sortMode ?? local.sortMode ?? 'name_asc',
-    favorites: s.favorites ?? local.favorites ?? [],
-    lastPath: s.lastPath ?? local.lastPath ?? '',
-    sidebarHidden: s.sidebarHidden ?? local.sidebarHidden ?? false,
-    customOrders: s.customOrders ?? local.customOrders ?? {},
-  };
+  let merged;
+  if (cloud) {
+    // Cloud exists — use it, but merge favorites (union by path)
+    const cloudFavs = cloud.favorites || [];
+    const localFavs = local.favorites || [];
+    const favMap = new Map();
+    for (const f of localFavs) favMap.set(f.path, f);
+    for (const f of cloudFavs) favMap.set(f.path, f); // cloud wins on conflict
+    merged = {
+      thumbSize: cloud.thumbSize ?? local.thumbSize ?? 160,
+      sortMode: cloud.sortMode ?? local.sortMode ?? 'name_asc',
+      favorites: [...favMap.values()],
+      lastPath: cloud.lastPath ?? local.lastPath ?? '',
+      sidebarHidden: cloud.sidebarHidden ?? local.sidebarHidden ?? false,
+      customOrders: { ...(local.customOrders || {}), ...(cloud.customOrders || {}) },
+    };
+  } else {
+    // No cloud file — use local and push to cloud immediately
+    merged = {
+      thumbSize: local.thumbSize ?? 160,
+      sortMode: local.sortMode ?? 'name_asc',
+      favorites: local.favorites ?? [],
+      lastPath: local.lastPath ?? '',
+      sidebarHidden: local.sidebarHidden ?? false,
+      customOrders: local.customOrders ?? {},
+    };
+    // Push to cloud so other devices can pick it up
+    saveSettingsNow(merged);
+  }
 
-  // Write merged back to IDB
+  // Write back to IDB
   IDB.put('settings','thumbSize', merged.thumbSize);
   IDB.put('settings','sortMode', merged.sortMode);
   IDB.put('settings','favorites', merged.favorites);
@@ -450,27 +468,33 @@ async function loadSettings() {
   return merged;
 }
 
+async function saveSettingsNow(data) {
+  try {
+    const d = data || {
+      thumbSize: App.thumbSize, sortMode: App.sortMode,
+      favorites: App.favorites, lastPath: App.currentPath,
+      sidebarHidden: $('#sidebar').classList.contains('hidden'),
+      customOrders: App.customOrders || {},
+    };
+    await App.storage.save(SETTINGS_PATH, JSON.stringify(d, null, 2));
+  } catch(e) { console.warn('Settings sync failed:', e); }
+}
+
 function saveSettings() {
-  // Debounced save to Dropbox
   clearTimeout(settingsSaveTimer);
-  settingsSaveTimer = setTimeout(async () => {
-    try {
-      const data = {
-        thumbSize: App.thumbSize,
-        sortMode: App.sortMode,
-        favorites: App.favorites,
-        lastPath: App.currentPath,
-        sidebarHidden: $('#sidebar').classList.contains('hidden'),
-        customOrders: App.customOrders || {},
-      };
-      await App.storage.save(SETTINGS_PATH, JSON.stringify(data, null, 2));
-    } catch(e) { console.warn('Settings sync failed:', e); }
-  }, 1500);
+  settingsSaveTimer = setTimeout(() => saveSettingsNow(), 1500);
+}
+
+function saveSettingsImmediate() {
+  clearTimeout(settingsSaveTimer);
+  saveSettingsNow();
 }
 
 function saveSetting(key, value) {
   IDB.put('settings', key, value);
-  saveSettings();
+  // Favorites and customOrders save immediately, others debounced
+  if (key === 'favorites' || key === 'customOrders') saveSettingsImmediate();
+  else saveSettings();
 }
 
 // ════════════════════════════════════════
@@ -944,7 +968,7 @@ function setupEvents() {
     const chk = e.target.closest('.grid-check');
     if (chk) { e.stopPropagation(); toggleSelect(parseInt(chk.dataset.check), true, false); return; }
 
-    const item = e.target.closest('.grid-item'); if (!item) { if (!lassoState?.prevented) clearSelection(); return; }
+    const item = e.target.closest('.grid-item'); if (!item) return;
     const idx = parseInt(item.dataset.index);
 
     if (isTouchDevice()) {
@@ -1030,6 +1054,13 @@ function setupEvents() {
   $('#grid').addEventListener('touchmove', () => clearTimeout(lpT));
 
   document.addEventListener('click', e => { if (!e.target.closest('#ctx-menu')) hideCtx(); });
+  // Clear selection when clicking empty space in main area
+  $('#main').addEventListener('click', e => {
+    if (lassoState?.prevented || lassoState?.active) return;
+    if (!e.target.closest('.grid-item') && !e.target.closest('.grid-check') && !e.target.closest('#ctx-menu')) {
+      clearSelection();
+    }
+  });
   $('#ctx-menu').addEventListener('click', e => { const item = e.target.closest('.ctx-item'); if (item) doCtx(item.dataset.action); });
 
   // Rename modal
