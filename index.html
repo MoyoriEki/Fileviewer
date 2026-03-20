@@ -23,7 +23,6 @@
   --border-light: #35353e;
   --danger: #e85050;
   --danger-dim: rgba(232,80,80,0.12);
-  --success: #4ecdc4;
   --radius: 6px;
   --radius-lg: 10px;
   --toolbar-h: 44px;
@@ -39,28 +38,23 @@
 html, body { height: 100%; overflow: hidden; }
 body {
   font-family: 'Noto Sans JP', sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.5;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
+  background: var(--bg); color: var(--text);
+  font-size: 13px; line-height: 1.5;
+  -webkit-tap-highlight-color: transparent; user-select: none;
 }
-
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-/* ── Connection Screen ─────────────────────────────────── */
+/* ── Connection ────────────────────────────────────────── */
 #connection-screen {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   height: 100dvh; gap: 20px; padding: 24px; text-align: center;
 }
-#connection-screen h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; }
+#connection-screen h1 { font-size: 22px; font-weight: 600; }
 #connection-screen p { color: var(--text-muted); max-width: 360px; font-size: 13px; }
 
-/* ── App Shell ─────────────────────────────────────────── */
+/* ── App ───────────────────────────────────────────────── */
 #app { display: none; height: 100dvh; flex-direction: column; }
 #app.active { display: flex; }
 
@@ -78,7 +72,6 @@ body {
   transition: background 0.1s; flex-shrink: 0;
 }
 .tb-btn:hover { background: var(--bg-hover); }
-.tb-btn:active { background: var(--bg-selected); }
 .tb-btn.disabled { opacity: 0.3; pointer-events: none; }
 
 #breadcrumb {
@@ -97,15 +90,19 @@ body {
 .bc-item.current:hover { background: transparent; }
 .bc-sep { color: var(--border-light); flex-shrink: 0; font-size: 11px; }
 
-#thumb-slider {
-  width: 80px; height: 3px; accent-color: var(--accent);
-  cursor: pointer; opacity: 0.7; transition: opacity 0.15s;
-}
+#thumb-slider { width: 80px; height: 3px; accent-color: var(--accent); cursor: pointer; opacity: 0.7; }
 #thumb-slider:hover { opacity: 1; }
-
 .tb-spacer { width: 1px; height: 20px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
 
-/* ── Body (Sidebar + Main) ────────────────────────────── */
+#sort-select {
+  background: transparent; border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-muted);
+  font-family: inherit; font-size: 11.5px; padding: 3px 6px;
+  cursor: pointer; outline: none; flex-shrink: 0;
+}
+#sort-select option { background: var(--bg-raised); color: var(--text); }
+
+/* ── Body ──────────────────────────────────────────────── */
 #body { display: flex; flex: 1; overflow: hidden; }
 
 /* ── Sidebar ───────────────────────────────────────────── */
@@ -140,31 +137,54 @@ body {
 #sidebar-footer button {
   width: 100%; padding: 5px; border: none; border-radius: var(--radius);
   background: transparent; color: var(--text-muted); cursor: pointer;
-  font-family: inherit; font-size: 11.5px; transition: all 0.1s;
+  font-family: inherit; font-size: 11.5px;
 }
 #sidebar-footer button:hover { background: var(--bg-hover); color: var(--text); }
 
-/* ── Main Area ─────────────────────────────────────────── */
-#main { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px; position: relative; }
+/* ── Main ──────────────────────────────────────────────── */
+#main { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px; position: relative; }
 
 /* ── Grid ──────────────────────────────────────────────── */
 #grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(calc(var(--thumb-size) * 1px), 1fr));
-  gap: 8px;
+  gap: 4px;
 }
 .grid-item {
   display: flex; flex-direction: column; align-items: center;
-  border-radius: var(--radius); cursor: pointer; padding: 6px;
+  border-radius: var(--radius); cursor: pointer; padding: 4px;
   transition: background 0.1s;
 }
 .grid-item:hover { background: var(--bg-hover); }
+
 .grid-thumb {
   width: 100%; aspect-ratio: 1;
   display: flex; align-items: center; justify-content: center;
   border-radius: 4px; overflow: hidden; background: var(--bg);
+  position: relative;
 }
 .grid-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+/* Folder preview: 2x2 mosaic */
+.folder-preview {
+  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+  width: 100%; height: 100%; gap: 1px; background: var(--border);
+  border-radius: 4px; overflow: hidden;
+}
+.folder-preview .fp-cell {
+  background: var(--bg); display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.folder-preview .fp-cell img { width: 100%; height: 100%; object-fit: cover; }
+.folder-preview .fp-cell .fp-placeholder {
+  color: var(--text-muted); font-size: calc(var(--thumb-size) * 0.12px); opacity: 0.3;
+}
+.folder-preview .fp-icon {
+  position: absolute; bottom: 2px; right: 3px;
+  font-size: 12px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
+  z-index: 2; pointer-events: none;
+}
+
 .grid-thumb .folder-icon { font-size: calc(var(--thumb-size) * 0.35px); color: var(--accent); opacity: 0.7; }
 .grid-thumb .file-icon { font-size: calc(var(--thumb-size) * 0.22px); color: var(--text-muted); opacity: 0.5; }
 .grid-thumb .loading-spinner {
@@ -175,7 +195,7 @@ body {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .grid-name {
-  margin-top: 4px; font-size: 11px; text-align: center;
+  margin-top: 3px; font-size: 11px; text-align: center;
   width: 100%; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; color: var(--text-muted); padding: 0 2px;
 }
@@ -229,14 +249,13 @@ body {
 }
 #viewer-topbar.visible { opacity: 1; pointer-events: auto; }
 #viewer-title {
-  flex: 1; font-size: 13px; font-weight: 400; color: #fff;
+  flex: 1; font-size: 13px; color: #fff;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .viewer-btn {
   width: 36px; height: 36px; border: none; border-radius: var(--radius);
   background: rgba(255,255,255,0.1); color: #fff; cursor: pointer;
   font-size: 18px; display: flex; align-items: center; justify-content: center;
-  transition: background 0.1s;
 }
 .viewer-btn:hover { background: rgba(255,255,255,0.2); }
 
@@ -244,8 +263,8 @@ body {
   flex: 1; display: flex; align-items: center; justify-content: center;
   overflow: hidden; position: relative;
 }
-#viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; transition: opacity 0.15s; }
-#viewer-img.loading { opacity: 0.3; }
+#viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+#viewer-img.loading { opacity: 0; }
 
 .tap-zone { position: absolute; top: 0; bottom: 0; width: 30%; z-index: 105; cursor: pointer; }
 .tap-zone.left { left: 0; }
@@ -276,13 +295,13 @@ body {
 .modal-input {
   width: 100%; padding: 8px 10px; border: 1px solid var(--border);
   border-radius: var(--radius); background: var(--bg); color: var(--text);
-  font-family: inherit; font-size: 13px; outline: none; transition: border-color 0.15s;
+  font-family: inherit; font-size: 13px; outline: none;
 }
 .modal-input:focus { border-color: var(--accent); }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 .modal-btn {
   padding: 6px 16px; border: none; border-radius: var(--radius);
-  font-family: inherit; font-size: 13px; cursor: pointer; transition: all 0.1s;
+  font-family: inherit; font-size: 13px; cursor: pointer;
 }
 .modal-btn.primary { background: var(--accent); color: #000; font-weight: 500; }
 .modal-btn.primary:hover { background: var(--accent-strong); }
@@ -299,15 +318,6 @@ body {
 }
 #toast.show { opacity: 1; }
 
-/* ── Sort select ───────────────────────────────────────── */
-#sort-select {
-  background: transparent; border: 1px solid var(--border);
-  border-radius: var(--radius); color: var(--text-muted);
-  font-family: inherit; font-size: 11.5px; padding: 3px 6px;
-  cursor: pointer; outline: none; flex-shrink: 0;
-}
-#sort-select option { background: var(--bg-raised); color: var(--text); }
-
 /* ── Responsive ────────────────────────────────────────── */
 @media (max-width: 700px) {
   #sidebar { display: none; }
@@ -315,21 +325,18 @@ body {
     display: flex; position: fixed; top: var(--toolbar-h); left: 0; bottom: 0;
     z-index: 50; box-shadow: 4px 0 20px rgba(0,0,0,0.5);
   }
-  #main { padding: 8px; }
-  #grid { gap: 6px; }
+  #main { padding: 6px; }
 }
 </style>
 </head>
 <body>
 
-<!-- ════ Connection Screen ════ -->
 <div id="connection-screen">
   <h1>Dropbox Filer</h1>
   <p>Dropbox上のファイルをブラウズ・管理するファイラー</p>
   <div id="dbx-ui"></div>
 </div>
 
-<!-- ════ App ════ -->
 <div id="app">
   <div id="toolbar">
     <button class="tb-btn" id="btn-sidebar" title="サイドバー">☰</button>
@@ -337,7 +344,7 @@ body {
     <button class="tb-btn" id="btn-forward" title="進む">→</button>
     <button class="tb-btn" id="btn-up" title="上のフォルダ">↑</button>
     <div id="breadcrumb"></div>
-    <select id="sort-select" title="並び替え">
+    <select id="sort-select">
       <option value="name_asc">名前 ↑</option>
       <option value="name_desc">名前 ↓</option>
       <option value="date_desc">更新日 ↓</option>
@@ -355,9 +362,7 @@ body {
     <div id="sidebar">
       <div id="sidebar-header">お気に入り</div>
       <div id="fav-list"></div>
-      <div id="sidebar-footer">
-        <button id="btn-add-fav">＋ 現在のフォルダを追加</button>
-      </div>
+      <div id="sidebar-footer"><button id="btn-add-fav">＋ 現在のフォルダを追加</button></div>
     </div>
     <div id="main">
       <div id="loading-overlay"><div class="loading-spinner" style="width:28px;height:28px;border:3px solid var(--border-light);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div></div>
@@ -366,7 +371,6 @@ body {
   </div>
 </div>
 
-<!-- ════ Image Viewer ════ -->
 <div id="viewer">
   <div id="viewer-topbar">
     <span id="viewer-title"></span>
@@ -384,10 +388,8 @@ body {
   </div>
 </div>
 
-<!-- ════ Context Menu ════ -->
 <div id="ctx-menu"></div>
 
-<!-- ════ Rename Modal ════ -->
 <div class="modal-overlay" id="modal-rename">
   <div class="modal-box">
     <h3>名前の変更</h3>
@@ -399,154 +401,198 @@ body {
   </div>
 </div>
 
-<!-- ════ Toast ════ -->
 <div id="toast"></div>
 
 <script>
-// ════════════════════════════════════════════════════════════
-// App State
-// ════════════════════════════════════════════════════════════
+'use strict';
+
+// ════════════════════════════════════════
+// State
+// ════════════════════════════════════════
 const App = {
   storage: null,
   currentPath: '',
   entries: [],
-  history: [],
-  historyIndex: -1,
   favorites: [],
-  thumbCache: {},
+  thumbCache: {},       // cacheKey → objectURL (file thumbs)
+  folderPreviews: {},   // folderPath → [url, url, ...]
+  sortMode: 'name_asc',
+  thumbSize: 160,
+  // Viewer
   viewerImages: [],
   viewerIndex: 0,
   viewerVisible: false,
   toolbarTimer: null,
-  sortMode: 'name_asc',
-  thumbSize: 160,
-  prefetchCache: {},
+  prefetchCache: {},    // relativePath → objectURL
+  // Navigation
+  navGen: 0,            // incremented on each navigate, to discard stale loads
 };
 
-const BASE_PATH = '';
-const STORAGE_PREFIX = 'dbxfiler';
-const THUMB_EXTENSIONS = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','ppm']);
-const IMAGE_EXTENSIONS = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','svg']);
+const THUMB_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','ppm']);
+const IMG_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','svg']);
 
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
+// Natural Sort
+// ════════════════════════════════════════
+function naturalCmp(a, b) {
+  const an = natChunks(a), bn = natChunks(b);
+  const len = Math.min(an.length, bn.length);
+  for (let i = 0; i < len; i++) {
+    const ac = an[i], bc = bn[i];
+    if (ac.n !== null && bc.n !== null) {
+      if (ac.n !== bc.n) return ac.n - bc.n;
+    } else if (ac.n !== null) {
+      return -1; // numbers before text
+    } else if (bc.n !== null) {
+      return 1;
+    } else {
+      const c = ac.s.localeCompare(bc.s, 'ja', { sensitivity: 'base' });
+      if (c !== 0) return c;
+    }
+  }
+  return an.length - bn.length;
+}
+
+function natChunks(str) {
+  const res = [];
+  const re = /(\d+)|(\D+)/g;
+  let m;
+  while ((m = re.exec(str)) !== null) {
+    if (m[1] !== undefined) {
+      res.push({ n: parseInt(m[1], 10), s: m[1] });
+    } else {
+      res.push({ n: null, s: m[2] });
+    }
+  }
+  return res;
+}
+
+// ════════════════════════════════════════
 // IndexedDB
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 const IDB = {
   db: null,
   async open() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open('DropboxFiler', 1);
-      req.onupgradeneeded = (e) => {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('DropboxFiler', 2);
+      r.onupgradeneeded = (e) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('thumbs')) db.createObjectStore('thumbs');
         if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
+        if (!db.objectStoreNames.contains('folderPreviews')) db.createObjectStore('folderPreviews');
       };
-      req.onsuccess = (e) => { IDB.db = e.target.result; resolve(); };
-      req.onerror = () => reject(req.error);
+      r.onsuccess = (e) => { IDB.db = e.target.result; res(); };
+      r.onerror = () => rej(r.error);
     });
   },
   async get(store, key) {
-    return new Promise((resolve) => {
-      const tx = IDB.db.transaction(store, 'readonly');
-      const r = tx.objectStore(store).get(key);
-      r.onsuccess = () => resolve(r.result);
-      r.onerror = () => resolve(undefined);
+    return new Promise((res) => {
+      try {
+        const tx = IDB.db.transaction(store, 'readonly');
+        const r = tx.objectStore(store).get(key);
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => res(undefined);
+      } catch(_) { res(undefined); }
     });
   },
   async put(store, key, value) {
-    return new Promise((resolve) => {
-      const tx = IDB.db.transaction(store, 'readwrite');
-      tx.objectStore(store).put(value, key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
+    return new Promise((res) => {
+      try {
+        const tx = IDB.db.transaction(store, 'readwrite');
+        tx.objectStore(store).put(value, key);
+        tx.oncomplete = () => res();
+        tx.onerror = () => res();
+      } catch(_) { res(); }
     });
   },
 };
 
-// ════════════════════════════════════════════════════════════
-// Dropbox Thumbnail API (direct call, not in StorageBridge)
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
+// Dropbox Thumbnail API
+// ════════════════════════════════════════
 function dbxArg(obj) {
   return JSON.stringify(obj).replace(/[\u0080-\uFFFF]/g,
     c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 }
 
-async function fetchThumbnail(dropboxPath, size) {
-  size = size || 'w256h256';
+async function fetchThumbnail(absPath, size) {
   const token = App.storage.getToken();
-  if (!token) throw new Error('Not connected');
   const r = await fetch('https://content.dropboxapi.com/2/files/get_thumbnail_v2', {
     method: 'POST',
     headers: {
       'Authorization': 'Bearer ' + token,
       'Dropbox-API-Arg': dbxArg({
-        resource: { '.tag': 'path', path: dropboxPath },
-        format: 'jpeg', size: size, mode: 'bestfit',
+        resource: { '.tag': 'path', path: absPath },
+        format: 'jpeg', size: size || 'w256h256', mode: 'bestfit',
       }),
     },
   });
-  if (!r.ok) throw new Error('Thumbnail failed: ' + r.status);
+  if (!r.ok) throw new Error(r.status);
   return r.blob();
 }
 
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // Helpers
-// ════════════════════════════════════════════════════════════
-const $ = (s) => document.querySelector(s);
-const $$ = (s) => document.querySelectorAll(s);
-function ext(name) { const i = name.lastIndexOf('.'); return i > 0 ? name.slice(i + 1).toLowerCase() : ''; }
+// ════════════════════════════════════════
+const $ = s => document.querySelector(s);
+function ext(n) { const i = n.lastIndexOf('.'); return i > 0 ? n.slice(i+1).toLowerCase() : ''; }
 function baseName(p) { return p.split('/').pop(); }
-function parentPath(p) { const parts = p.split('/'); parts.pop(); return parts.join('/'); }
+function parentPath(p) { const a = p.split('/'); a.pop(); return a.join('/'); }
 
 function toast(msg) {
   const el = $('#toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  clearTimeout(el._timer);
-  el._timer = setTimeout(() => el.classList.remove('show'), 2200);
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
-function entryRelativePath(entry) {
+function entryRelPath(entry) {
+  // path_display is like "/FolderA/SubB/file.jpg" → strip leading "/"
   const abs = entry.path_display || entry.path_lower || '';
-  const prefix = BASE_PATH + '/';
-  if (abs.toLowerCase().startsWith(BASE_PATH.toLowerCase() + '/')) {
-    return abs.slice(prefix.length);
-  }
-  return entry.name;
+  return abs.startsWith('/') ? abs.slice(1) : abs;
 }
 
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
+// Thumbnail Queue (shared for files + folder previews)
+// ════════════════════════════════════════
+const TQ = { running: 0, max: 6, q: [] };
+function tqRun(fn) {
+  return new Promise((resolve, reject) => {
+    const exec = () => {
+      TQ.running++;
+      fn().then(resolve, reject).finally(() => {
+        TQ.running--;
+        if (TQ.q.length) TQ.q.shift()();
+      });
+    };
+    if (TQ.running < TQ.max) exec();
+    else TQ.q.push(exec);
+  });
+}
+
+// ════════════════════════════════════════
 // Init
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 async function init() {
   await IDB.open();
 
-  const savedThumb = await IDB.get('settings', 'thumbSize');
-  if (savedThumb) {
-    App.thumbSize = savedThumb;
-    $('#thumb-slider').value = savedThumb;
-    document.documentElement.style.setProperty('--thumb-size', savedThumb);
-  }
-  const savedSort = await IDB.get('settings', 'sortMode');
-  if (savedSort) { App.sortMode = savedSort; $('#sort-select').value = savedSort; }
-  const savedFavs = await IDB.get('settings', 'favorites');
-  if (savedFavs) App.favorites = savedFavs;
-  const savedPath = await IDB.get('settings', 'lastPath');
+  const st = await IDB.get('settings', 'thumbSize');
+  if (st) { App.thumbSize = st; $('#thumb-slider').value = st; document.documentElement.style.setProperty('--thumb-size', st); }
+  const ss = await IDB.get('settings', 'sortMode');
+  if (ss) { App.sortMode = ss; $('#sort-select').value = ss; }
+  const sf = await IDB.get('settings', 'favorites');
+  if (sf) App.favorites = sf;
+  const sp = await IDB.get('settings', 'lastPath');
 
-  App.storage = new StorageBridge({
-    basePath: '',
-    storagePrefix: STORAGE_PREFIX,
-    ui: true,
-    uiTarget: '#dbx-ui',
-  });
+  App.storage = new StorageBridge({ basePath: '', storagePrefix: 'dbxfiler', ui: true, uiTarget: '#dbx-ui' });
 
   App.storage.on('connected', async () => {
     $('#connection-screen').style.display = 'none';
     $('#app').classList.add('active');
     renderFavorites();
-    await navigate(savedPath || '', true);
+    const startPath = pathFromHash() ?? sp ?? '';
+    await navigate(startPath, true);
   });
-
   App.storage.on('disconnected', () => {
     $('#connection-screen').style.display = '';
     $('#app').classList.remove('active');
@@ -556,27 +602,41 @@ async function init() {
     $('#connection-screen').style.display = 'none';
     $('#app').classList.add('active');
     renderFavorites();
-    navigate(savedPath || '', true);
+    const startPath = pathFromHash() ?? sp ?? '';
+    navigate(startPath, true);
   }
 
   setupEvents();
 }
 
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
+// History API — folder path stored in hash
+// ════════════════════════════════════════
+function pathFromHash() {
+  const h = location.hash;
+  if (!h || h === '#') return null;
+  try { return decodeURIComponent(h.slice(1)); } catch(_) { return null; }
+}
+
+function pushHash(path) {
+  const newHash = '#' + encodeURIComponent(path);
+  if (location.hash !== newHash) {
+    history.pushState(null, '', newHash);
+  }
+}
+
+function replaceHash(path) {
+  history.replaceState(null, '', '#' + encodeURIComponent(path));
+}
+
+// ════════════════════════════════════════
 // Navigation
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 async function navigate(path, replace) {
   path = (path || '').replace(/^\/+|\/+$/g, '');
-  if (replace) {
-    if (App.historyIndex === -1) { App.history = [path]; App.historyIndex = 0; }
-    else { App.history[App.historyIndex] = path; }
-  } else {
-    App.history = App.history.slice(0, App.historyIndex + 1);
-    App.history.push(path);
-    App.historyIndex = App.history.length - 1;
-  }
   App.currentPath = path;
-  await IDB.put('settings', 'lastPath', path);
+  IDB.put('settings', 'lastPath', path);
+  replace ? replaceHash(path) : pushHash(path);
   updateNavButtons();
   renderBreadcrumb();
   renderFavorites();
@@ -584,17 +644,24 @@ async function navigate(path, replace) {
 }
 
 async function loadFolder(path) {
+  const gen = ++App.navGen;
+  const grid = $('#grid');
   const loading = $('#loading-overlay');
+
+  // Clear immediately to prevent stale thumbnails
+  grid.innerHTML = '';
   loading.classList.add('active');
+
   try {
     const entries = await App.storage.list(path || '');
+    if (gen !== App.navGen) return; // stale
     App.entries = sortEntries(entries);
-    renderGrid();
+    renderGrid(gen);
   } catch (e) {
-    console.error('loadFolder error:', e);
-    $('#grid').innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">⚠</div><div>読み込みエラー</div></div>';
+    if (gen !== App.navGen) return;
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">⚠</div><div>読み込みエラー</div></div>';
   } finally {
-    loading.classList.remove('active');
+    if (gen === App.navGen) loading.classList.remove('active');
   }
 }
 
@@ -603,8 +670,8 @@ function sortEntries(entries) {
   const files = entries.filter(e => e['.tag'] === 'file');
   const cmp = (a, b) => {
     switch (App.sortMode) {
-      case 'name_asc': return a.name.localeCompare(b.name, 'ja');
-      case 'name_desc': return b.name.localeCompare(a.name, 'ja');
+      case 'name_asc': return naturalCmp(a.name, b.name);
+      case 'name_desc': return naturalCmp(b.name, a.name);
       case 'date_desc': return (b.client_modified || '').localeCompare(a.client_modified || '');
       case 'date_asc': return (a.client_modified || '').localeCompare(b.client_modified || '');
       case 'size_desc': return (b.size || 0) - (a.size || 0);
@@ -612,39 +679,35 @@ function sortEntries(entries) {
       default: return 0;
     }
   };
-  folders.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  folders.sort((a, b) => naturalCmp(a.name, b.name));
   files.sort(cmp);
   return [...folders, ...files];
 }
 
 function updateNavButtons() {
-  $('#btn-back').classList.toggle('disabled', App.historyIndex <= 0);
-  $('#btn-forward').classList.toggle('disabled', App.historyIndex >= App.history.length - 1);
   $('#btn-up').classList.toggle('disabled', !App.currentPath);
 }
 
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // Breadcrumb
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 function renderBreadcrumb() {
   const bc = $('#breadcrumb');
   const parts = App.currentPath ? App.currentPath.split('/') : [];
-  let html = `<span class="bc-item${parts.length === 0 ? ' current' : ''}" data-path="">Dropbox</span>`;
+  let html = `<span class="bc-item${!parts.length ? ' current' : ''}" data-path="">Dropbox</span>`;
   let acc = '';
   for (let i = 0; i < parts.length; i++) {
     acc += (acc ? '/' : '') + parts[i];
-    const cur = i === parts.length - 1;
-    html += '<span class="bc-sep">›</span>';
-    html += `<span class="bc-item${cur ? ' current' : ''}" data-path="${acc}">${parts[i]}</span>`;
+    html += `<span class="bc-sep">›</span><span class="bc-item${i === parts.length-1 ? ' current' : ''}" data-path="${acc}">${parts[i]}</span>`;
   }
   bc.innerHTML = html;
   bc.scrollLeft = bc.scrollWidth;
 }
 
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // Grid
-// ════════════════════════════════════════════════════════════
-function renderGrid() {
+// ════════════════════════════════════════
+function renderGrid(gen) {
   const grid = $('#grid');
   const entries = App.entries;
   if (!entries.length) {
@@ -654,101 +717,178 @@ function renderGrid() {
   grid.innerHTML = entries.map((entry, idx) => {
     const isFolder = entry['.tag'] === 'folder';
     const e = ext(entry.name);
-    return `<div class="grid-item" data-index="${idx}" data-tag="${entry['.tag']}">
+    if (isFolder) {
+      return `<div class="grid-item" data-index="${idx}" data-tag="folder">
+        <div class="grid-thumb" id="thumb-${idx}"><span class="folder-icon">📁</span></div>
+        <div class="grid-name" title="${entry.name}">${entry.name}</div>
+      </div>`;
+    }
+    return `<div class="grid-item" data-index="${idx}" data-tag="file">
       <div class="grid-thumb" id="thumb-${idx}">
-        ${isFolder ? '<span class="folder-icon">📁</span>'
-          : (THUMB_EXTENSIONS.has(e) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">📄</span>')}
+        ${THUMB_EXT.has(e) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">📄</span>'}
       </div>
       <div class="grid-name" title="${entry.name}">${entry.name}</div>
     </div>`;
   }).join('');
-  setupIntersectionObserver();
+
+  setupObserver(gen);
+  loadFolderPreviews(gen);
 }
 
-// ════════════════════════════════════════════════════════════
-// Thumbnail Loading
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
+// File Thumbnail (Intersection Observer)
+// ════════════════════════════════════════
 let observer = null;
-function setupIntersectionObserver() {
+function setupObserver(gen) {
   if (observer) observer.disconnect();
-  observer = new IntersectionObserver((ioEntries) => {
-    for (const io of ioEntries) {
+  observer = new IntersectionObserver((ios) => {
+    for (const io of ios) {
       if (io.isIntersecting) {
-        loadThumb(parseInt(io.target.dataset.index));
+        loadThumb(parseInt(io.target.dataset.index), gen);
         observer.unobserve(io.target);
       }
     }
-  }, { root: $('#main'), rootMargin: '200px' });
-  $$('.grid-item').forEach(el => {
+  }, { root: $('#main'), rootMargin: '300px' });
+  document.querySelectorAll('.grid-item[data-tag="file"]').forEach(el => {
     const idx = parseInt(el.dataset.index);
     const entry = App.entries[idx];
-    if (entry && entry['.tag'] === 'file' && THUMB_EXTENSIONS.has(ext(entry.name))) {
-      observer.observe(el);
-    }
+    if (entry && THUMB_EXT.has(ext(entry.name))) observer.observe(el);
   });
 }
 
-const thumbQ = { running: 0, max: 4, waiters: [] };
-function thumbSlot() {
-  if (thumbQ.running < thumbQ.max) { thumbQ.running++; return Promise.resolve(); }
-  return new Promise(r => thumbQ.waiters.push(r));
-}
-function thumbRelease() {
-  thumbQ.running--;
-  if (thumbQ.waiters.length > 0) { thumbQ.running++; thumbQ.waiters.shift()(); }
-}
-
-async function loadThumb(idx) {
+async function loadThumb(idx, gen) {
   const entry = App.entries[idx];
-  if (!entry || entry['.tag'] !== 'file' || !THUMB_EXTENSIONS.has(ext(entry.name))) return;
-  const el = document.getElementById('thumb-' + idx);
-  if (!el) return;
-
+  if (!entry) return;
   const absPath = entry.path_lower;
   const cacheKey = absPath + ':' + (entry.content_hash || '');
 
+  // Memory cache
   if (App.thumbCache[cacheKey]) {
-    el.innerHTML = `<img src="${App.thumbCache[cacheKey]}" alt="">`;
+    setThumbImg(idx, gen, App.thumbCache[cacheKey]);
     return;
   }
+  // IDB cache
   const cached = await IDB.get('thumbs', cacheKey);
   if (cached) {
     const url = URL.createObjectURL(new Blob([cached], { type: 'image/jpeg' }));
     App.thumbCache[cacheKey] = url;
-    el.innerHTML = `<img src="${url}" alt="">`;
+    setThumbImg(idx, gen, url);
     return;
   }
-
-  await thumbSlot();
-  try {
+  // Fetch via queue
+  tqRun(async () => {
     const blob = await fetchThumbnail(entry.path_display || absPath);
     const buf = await blob.arrayBuffer();
     const url = URL.createObjectURL(new Blob([buf], { type: 'image/jpeg' }));
     App.thumbCache[cacheKey] = url;
-    await IDB.put('thumbs', cacheKey, buf);
-    const cur = document.getElementById('thumb-' + idx);
-    if (cur) cur.innerHTML = `<img src="${url}" alt="">`;
-  } catch (e) {
-    const cur = document.getElementById('thumb-' + idx);
-    if (cur) cur.innerHTML = '<span class="file-icon">🖼</span>';
-  } finally {
-    thumbRelease();
+    IDB.put('thumbs', cacheKey, buf);
+    setThumbImg(idx, gen, url);
+  }).catch(() => {
+    if (gen === App.navGen) {
+      const el = document.getElementById('thumb-' + idx);
+      if (el) el.innerHTML = '<span class="file-icon">🖼</span>';
+    }
+  });
+}
+
+function setThumbImg(idx, gen, url) {
+  if (gen !== App.navGen) return;
+  const el = document.getElementById('thumb-' + idx);
+  if (el) el.innerHTML = `<img src="${url}" alt="">`;
+}
+
+// ════════════════════════════════════════
+// Folder Preview Thumbnails
+// ════════════════════════════════════════
+async function loadFolderPreviews(gen) {
+  const folderEntries = App.entries
+    .map((e, i) => ({ entry: e, idx: i }))
+    .filter(x => x.entry['.tag'] === 'folder');
+
+  for (const { entry, idx } of folderEntries) {
+    if (gen !== App.navGen) return;
+    const folderRel = entryRelPath(entry);
+
+    // Check IDB cache for this folder
+    const cached = await IDB.get('folderPreviews', entry.path_lower);
+    if (cached && cached.length > 0) {
+      renderFolderPreview(idx, gen, cached);
+      continue;
+    }
+
+    // Fire and forget — don't await per folder, use queue
+    loadOneFolderPreview(entry, idx, gen, folderRel);
   }
 }
 
-// ════════════════════════════════════════════════════════════
+async function loadOneFolderPreview(entry, idx, gen, folderRel) {
+  try {
+    const children = await App.storage.list(folderRel);
+    if (gen !== App.navGen) return;
+    const images = children.filter(c => c['.tag'] === 'file' && THUMB_EXT.has(ext(c.name)));
+    if (!images.length) return;
+
+    const toFetch = images.slice(0, 4);
+    const urls = [];
+
+    for (const img of toFetch) {
+      if (gen !== App.navGen) return;
+      try {
+        const blob = await tqRun(() => fetchThumbnail(img.path_display || img.path_lower, 'w128h128'));
+        urls.push(URL.createObjectURL(blob));
+      } catch(_) {}
+    }
+
+    if (urls.length && gen === App.navGen) {
+      // Cache as blob arrays for persistence
+      const bufs = [];
+      for (const url of urls) {
+        try {
+          const r = await fetch(url);
+          bufs.push(await r.arrayBuffer());
+        } catch(_) {}
+      }
+      if (bufs.length) IDB.put('folderPreviews', entry.path_lower, bufs);
+      renderFolderPreview(idx, gen, urls);
+    }
+  } catch(_) {}
+}
+
+function renderFolderPreview(idx, gen, urlsOrBufs) {
+  if (gen !== App.navGen) return;
+  const el = document.getElementById('thumb-' + idx);
+  if (!el) return;
+
+  // Convert ArrayBuffers to URLs if needed
+  const urls = urlsOrBufs.map(u => {
+    if (typeof u === 'string') return u;
+    return URL.createObjectURL(new Blob([u], { type: 'image/jpeg' }));
+  });
+
+  let cells = '';
+  for (let i = 0; i < 4; i++) {
+    if (urls[i]) {
+      cells += `<div class="fp-cell"><img src="${urls[i]}" alt=""></div>`;
+    } else {
+      cells += `<div class="fp-cell"><span class="fp-placeholder">·</span></div>`;
+    }
+  }
+  el.innerHTML = `<div class="folder-preview">${cells}</div><span class="fp-icon">📁</span>`;
+}
+
+// ════════════════════════════════════════
 // Favorites
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 function renderFavorites() {
   const list = $('#fav-list');
   if (!App.favorites.length) {
     list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:11.5px;text-align:center">お気に入りなし</div>';
     return;
   }
-  list.innerHTML = App.favorites.map((fav, i) => `
-    <div class="fav-item${App.currentPath === fav.path ? ' active' : ''}" data-path="${fav.path}" data-index="${i}">
+  list.innerHTML = App.favorites.map((f, i) => `
+    <div class="fav-item${App.currentPath === f.path ? ' active' : ''}" data-path="${f.path}" data-index="${i}">
       <span class="fav-icon">📁</span>
-      <span class="fav-name" title="${fav.path || 'ルート'}">${fav.name}</span>
+      <span class="fav-name" title="${f.path || 'ルート'}">${f.name}</span>
       <button class="fav-remove" data-index="${i}" title="削除">✕</button>
     </div>`).join('');
 }
@@ -756,8 +896,7 @@ function addFavorite(path) {
   if (App.favorites.some(f => f.path === path)) { toast('追加済みです'); return; }
   App.favorites.push({ path, name: path ? baseName(path) : 'ルート' });
   IDB.put('settings', 'favorites', App.favorites);
-  renderFavorites();
-  toast('お気に入りに追加しました');
+  renderFavorites(); toast('お気に入りに追加');
 }
 function removeFavorite(i) {
   App.favorites.splice(i, 1);
@@ -765,155 +904,178 @@ function removeFavorite(i) {
   renderFavorites();
 }
 
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // Context Menu
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 let ctxTarget = null;
-function showContextMenu(x, y, entry) {
+function showCtx(x, y, entry) {
   ctxTarget = entry;
-  const menu = $('#ctx-menu');
-  const isFolder = entry['.tag'] === 'folder';
+  const m = $('#ctx-menu');
+  const isF = entry['.tag'] === 'folder';
   const e = ext(entry.name);
-  let html = '';
-  if (isFolder) {
-    html += `<div class="ctx-item" data-action="open"><span class="ctx-icon">📂</span>開く</div>`;
-    html += `<div class="ctx-item" data-action="fav"><span class="ctx-icon">⭐</span>お気に入りに追加</div>`;
-    html += '<div class="ctx-sep"></div>';
-  } else if (IMAGE_EXTENSIONS.has(e)) {
-    html += `<div class="ctx-item" data-action="view"><span class="ctx-icon">🖼</span>画像を開く</div>`;
-    html += '<div class="ctx-sep"></div>';
+  let h = '';
+  if (isF) {
+    h += '<div class="ctx-item" data-action="open"><span class="ctx-icon">📂</span>開く</div>';
+    h += '<div class="ctx-item" data-action="fav"><span class="ctx-icon">⭐</span>お気に入りに追加</div>';
+    h += '<div class="ctx-sep"></div>';
+  } else if (IMG_EXT.has(e)) {
+    h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">🖼</span>画像を開く</div>';
+    h += '<div class="ctx-sep"></div>';
   }
-  html += `<div class="ctx-item" data-action="rename"><span class="ctx-icon">✏</span>名前の変更</div>`;
-  html += `<div class="ctx-item danger" data-action="delete"><span class="ctx-icon">🗑</span>削除</div>`;
-  menu.innerHTML = html;
-  menu.style.left = Math.min(x, innerWidth - 180) + 'px';
-  menu.style.top = Math.min(y, innerHeight - 200) + 'px';
-  menu.classList.add('show');
+  h += '<div class="ctx-item" data-action="rename"><span class="ctx-icon">✏</span>名前の変更</div>';
+  h += '<div class="ctx-item danger" data-action="delete"><span class="ctx-icon">🗑</span>削除</div>';
+  m.innerHTML = h;
+  m.style.left = Math.min(x, innerWidth - 180) + 'px';
+  m.style.top = Math.min(y, innerHeight - 200) + 'px';
+  m.classList.add('show');
 }
-function hideContextMenu() { $('#ctx-menu').classList.remove('show'); ctxTarget = null; }
+function hideCtx() { $('#ctx-menu').classList.remove('show'); ctxTarget = null; }
 
-async function handleCtx(action) {
+async function doCtx(action) {
   if (!ctxTarget) return;
-  const entry = ctxTarget;
-  hideContextMenu();
-  const rel = entryRelativePath(entry);
-  switch (action) {
-    case 'open': await navigate(rel); break;
-    case 'view': openViewer(entry); break;
-    case 'fav': addFavorite(rel); break;
-    case 'rename': showRenameModal(entry); break;
-    case 'delete': await deleteEntry(entry); break;
-  }
+  const entry = ctxTarget; hideCtx();
+  const rel = entryRelPath(entry);
+  if (action === 'open') navigate(rel);
+  else if (action === 'view') openViewer(entry);
+  else if (action === 'fav') addFavorite(rel);
+  else if (action === 'rename') showRenameModal(entry);
+  else if (action === 'delete') await deleteEntry(entry);
 }
 
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // Rename / Delete
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 let renameTarget = null;
 function showRenameModal(entry) {
   renameTarget = entry;
-  const input = $('#rename-input');
-  input.value = entry['.tag'] === 'folder' ? entry.name : entry.name.replace(/\.[^.]+$/, '');
+  const inp = $('#rename-input');
+  inp.value = entry['.tag'] === 'folder' ? entry.name : entry.name.replace(/\.[^.]+$/, '');
   $('#modal-rename').classList.add('show');
-  setTimeout(() => { input.focus(); input.select(); }, 50);
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
 }
-async function executeRename() {
+async function execRename() {
   if (!renameTarget) return;
   const entry = renameTarget;
-  const newName = $('#rename-input').value.trim();
-  if (!newName) return;
+  const raw = $('#rename-input').value.trim();
+  if (!raw) return;
   const e = ext(entry.name);
-  const finalName = (entry['.tag'] === 'file' && e) ? newName + '.' + e : newName;
-  if (finalName === entry.name) { $('#modal-rename').classList.remove('show'); return; }
-  const rel = entryRelativePath(entry);
-  const parent = parentPath(rel);
-  const newRel = parent ? parent + '/' + finalName : finalName;
+  const fin = (entry['.tag'] === 'file' && e) ? raw + '.' + e : raw;
+  if (fin === entry.name) { $('#modal-rename').classList.remove('show'); return; }
+  const rel = entryRelPath(entry);
+  const par = parentPath(rel);
+  const newRel = par ? par + '/' + fin : fin;
   try {
     await App.storage.move(rel, newRel);
     toast('名前を変更しました');
     $('#modal-rename').classList.remove('show');
-    await loadFolder(App.currentPath);
-  } catch (e) { toast('エラー: ' + e.message); }
+    loadFolder(App.currentPath);
+  } catch(e) { toast('エラー: ' + e.message); }
 }
 async function deleteEntry(entry) {
   if (!confirm(`「${entry.name}」を削除しますか？`)) return;
   try {
-    await App.storage.delete(entryRelativePath(entry));
+    await App.storage.delete(entryRelPath(entry));
     toast('削除しました');
-    await loadFolder(App.currentPath);
-  } catch (e) { toast('削除エラー: ' + e.message); }
+    loadFolder(App.currentPath);
+  } catch(e) { toast('削除エラー: ' + e.message); }
 }
 
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // Image Viewer
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 function openViewer(entry) {
-  App.viewerImages = App.entries.filter(e => e['.tag'] === 'file' && IMAGE_EXTENSIONS.has(ext(e.name)));
+  App.viewerImages = App.entries.filter(e => e['.tag'] === 'file' && IMG_EXT.has(ext(e.name)));
   const idx = App.viewerImages.indexOf(entry);
   if (idx === -1) return;
   App.viewerIndex = idx;
   App.viewerVisible = true;
+
+  // Clear previous image immediately
+  const img = $('#viewer-img');
+  img.removeAttribute('src');
+  img.classList.add('loading');
+
   $('#viewer').classList.add('active');
-  showViewerToolbar();
+  showViewerBar();
   loadViewerPage(idx);
   updateViewerSlider();
-  history.pushState({ viewer: true }, '');
+  history.pushState({ viewer: true }, '', location.hash);
 }
+
 function closeViewer() {
+  if (!App.viewerVisible) return;
   App.viewerVisible = false;
   $('#viewer').classList.remove('active');
-  Object.values(App.prefetchCache).forEach(u => URL.revokeObjectURL(u));
+  // Clear image to prevent flash next time
+  $('#viewer-img').removeAttribute('src');
+  // Revoke prefetch URLs
+  for (const u of Object.values(App.prefetchCache)) URL.revokeObjectURL(u);
   App.prefetchCache = {};
 }
+
+let viewerLoadGen = 0;
 async function loadViewerPage(idx) {
   if (idx < 0 || idx >= App.viewerImages.length) return;
   App.viewerIndex = idx;
   const entry = App.viewerImages[idx];
-  const rel = entryRelativePath(entry);
+  const rel = entryRelPath(entry);
   const img = $('#viewer-img');
+  const gen = ++viewerLoadGen;
+
   $('#viewer-title').textContent = entry.name;
   updateViewerSlider();
+
+  // Clear old src immediately, show loading
+  img.removeAttribute('src');
   img.classList.add('loading');
+
   try {
     let url = App.prefetchCache[rel];
     if (!url) {
       const buf = await App.storage.loadBinary(rel);
+      if (gen !== viewerLoadGen) return; // stale
       const e = ext(entry.name);
       const mime = e === 'svg' ? 'image/svg+xml' : 'image/' + (e === 'jpg' ? 'jpeg' : e);
       url = URL.createObjectURL(new Blob([buf], { type: mime }));
     }
+    if (gen !== viewerLoadGen) return;
     img.src = url;
-    img.onload = () => img.classList.remove('loading');
-  } catch (e) {
-    console.error('Viewer load error:', e);
-    img.classList.remove('loading');
+    img.onload = () => { if (gen === viewerLoadGen) img.classList.remove('loading'); };
+  } catch(e) {
+    if (gen === viewerLoadGen) img.classList.remove('loading');
   }
+
+  // Prefetch neighbors (fire and forget, don't block)
   prefetchViewer(idx);
 }
+
 async function prefetchViewer(cur) {
-  for (const off of [1, -1, 2, -2]) {
+  // Prefetch ±3 pages for smoother navigation
+  for (const off of [1, -1, 2, -2, 3, -3]) {
     const i = cur + off;
     if (i < 0 || i >= App.viewerImages.length) continue;
-    const entry = App.viewerImages[i];
-    const rel = entryRelativePath(entry);
+    const rel = entryRelPath(App.viewerImages[i]);
     if (App.prefetchCache[rel]) continue;
     try {
       const buf = await App.storage.loadBinary(rel);
-      const e = ext(entry.name);
+      const e = ext(App.viewerImages[i].name);
       const mime = e === 'svg' ? 'image/svg+xml' : 'image/' + (e === 'jpg' ? 'jpeg' : e);
       App.prefetchCache[rel] = URL.createObjectURL(new Blob([buf], { type: mime }));
-    } catch (_) {}
+    } catch(_) {}
   }
 }
+
 function viewerPrev() { if (App.viewerIndex > 0) loadViewerPage(App.viewerIndex - 1); }
 function viewerNext() { if (App.viewerIndex < App.viewerImages.length - 1) loadViewerPage(App.viewerIndex + 1); }
+
 function updateViewerSlider() {
   const s = $('#viewer-slider');
   s.max = App.viewerImages.length - 1;
   s.value = App.viewerIndex;
   $('#viewer-page-label').textContent = `${App.viewerIndex + 1} / ${App.viewerImages.length}`;
 }
-function showViewerToolbar() {
+
+function showViewerBar() {
   $('#viewer-topbar').classList.add('visible');
   $('#viewer-bottombar').classList.add('visible');
   clearTimeout(App.toolbarTimer);
@@ -925,37 +1087,34 @@ function showViewerToolbar() {
   }, 3000);
 }
 
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // Events
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 function setupEvents() {
-  $('#btn-back').onclick = () => {
-    if (App.historyIndex > 0) { App.historyIndex--; navigate(App.history[App.historyIndex], true); }
-  };
-  $('#btn-forward').onclick = () => {
-    if (App.historyIndex < App.history.length - 1) { App.historyIndex++; navigate(App.history[App.historyIndex], true); }
-  };
+  // Nav buttons
+  $('#btn-back').onclick = () => history.back();
+  $('#btn-forward').onclick = () => history.forward();
   $('#btn-up').onclick = () => { if (App.currentPath) navigate(parentPath(App.currentPath)); };
   $('#btn-refresh').onclick = () => loadFolder(App.currentPath);
   $('#btn-disconnect').onclick = () => App.storage.disconnect();
   $('#btn-sidebar').onclick = () => $('#sidebar').classList.toggle('mobile-open');
 
   // Breadcrumb
-  $('#breadcrumb').addEventListener('click', (e) => {
+  $('#breadcrumb').addEventListener('click', e => {
     const item = e.target.closest('.bc-item');
     if (item && !item.classList.contains('current')) navigate(item.dataset.path);
   });
 
   // Sort
-  $('#sort-select').onchange = (e) => {
+  $('#sort-select').onchange = e => {
     App.sortMode = e.target.value;
     IDB.put('settings', 'sortMode', App.sortMode);
     App.entries = sortEntries(App.entries);
-    renderGrid();
+    renderGrid(App.navGen);
   };
 
   // Thumb slider
-  $('#thumb-slider').oninput = (e) => {
+  $('#thumb-slider').oninput = e => {
     App.thumbSize = parseInt(e.target.value);
     document.documentElement.style.setProperty('--thumb-size', App.thumbSize);
     IDB.put('settings', 'thumbSize', App.thumbSize);
@@ -963,71 +1122,70 @@ function setupEvents() {
 
   // Favorites
   $('#btn-add-fav').onclick = () => addFavorite(App.currentPath);
-  $('#fav-list').addEventListener('click', (e) => {
+  $('#fav-list').addEventListener('click', e => {
     const rm = e.target.closest('.fav-remove');
     if (rm) { removeFavorite(parseInt(rm.dataset.index)); return; }
     const item = e.target.closest('.fav-item');
     if (item) { navigate(item.dataset.path); $('#sidebar').classList.remove('mobile-open'); }
   });
 
-  // Grid: double click / double tap
-  let lastTapTime = 0, lastTapEl = null;
-  $('#grid').addEventListener('click', (e) => {
+  // Grid double click / double tap
+  let lastTapT = 0, lastTapEl = null;
+  $('#grid').addEventListener('click', e => {
     const item = e.target.closest('.grid-item');
     if (!item) return;
     const now = Date.now();
-    if (now - lastTapTime < 350 && lastTapEl === item) { handleItemOpen(item); lastTapTime = 0; return; }
-    lastTapTime = now; lastTapEl = item;
+    if (now - lastTapT < 350 && lastTapEl === item) { handleOpen(item); lastTapT = 0; return; }
+    lastTapT = now; lastTapEl = item;
   });
-  $('#grid').addEventListener('dblclick', (e) => {
+  $('#grid').addEventListener('dblclick', e => {
     const item = e.target.closest('.grid-item');
-    if (item) handleItemOpen(item);
+    if (item) handleOpen(item);
   });
 
   // Context menu
-  $('#grid').addEventListener('contextmenu', (e) => {
+  $('#grid').addEventListener('contextmenu', e => {
     const item = e.target.closest('.grid-item');
     if (!item) return;
     e.preventDefault();
     const entry = App.entries[parseInt(item.dataset.index)];
-    if (entry) showContextMenu(e.clientX, e.clientY, entry);
+    if (entry) showCtx(e.clientX, e.clientY, entry);
   });
-  // Long press
-  let lpTimer = null;
-  $('#grid').addEventListener('touchstart', (e) => {
+  let lpT = null;
+  $('#grid').addEventListener('touchstart', e => {
     const item = e.target.closest('.grid-item');
     if (!item) return;
-    lpTimer = setTimeout(() => {
+    lpT = setTimeout(() => {
       const entry = App.entries[parseInt(item.dataset.index)];
-      if (entry) showContextMenu(e.touches[0].clientX, e.touches[0].clientY, entry);
+      if (entry) showCtx(e.touches[0].clientX, e.touches[0].clientY, entry);
     }, 500);
   }, { passive: true });
-  $('#grid').addEventListener('touchend', () => clearTimeout(lpTimer));
-  $('#grid').addEventListener('touchmove', () => clearTimeout(lpTimer));
+  $('#grid').addEventListener('touchend', () => clearTimeout(lpT));
+  $('#grid').addEventListener('touchmove', () => clearTimeout(lpT));
 
-  document.addEventListener('click', (e) => { if (!e.target.closest('#ctx-menu')) hideContextMenu(); });
-  $('#ctx-menu').addEventListener('click', (e) => {
+  document.addEventListener('click', e => { if (!e.target.closest('#ctx-menu')) hideCtx(); });
+  $('#ctx-menu').addEventListener('click', e => {
     const item = e.target.closest('.ctx-item');
-    if (item) handleCtx(item.dataset.action);
+    if (item) doCtx(item.dataset.action);
   });
 
   // Rename
-  $('#rename-ok').onclick = executeRename;
+  $('#rename-ok').onclick = execRename;
   $('#rename-cancel').onclick = () => $('#modal-rename').classList.remove('show');
-  $('#rename-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') executeRename();
+  $('#rename-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') execRename();
     if (e.key === 'Escape') $('#modal-rename').classList.remove('show');
   });
 
   // Viewer
-  $('#viewer-close').onclick = closeViewer;
+  $('#viewer-close').onclick = () => { closeViewer(); history.back(); };
   $('#tap-left').onclick = viewerPrev;
   $('#tap-right').onclick = viewerNext;
-  $('#tap-center').onclick = showViewerToolbar;
-  $('#viewer-slider').oninput = (e) => loadViewerPage(parseInt(e.target.value));
+  $('#tap-center').onclick = showViewerBar;
+  $('#viewer-slider').oninput = e => loadViewerPage(parseInt(e.target.value));
 
   // Keyboard
-  document.addEventListener('keydown', (e) => {
+  document.addEventListener('keydown', e => {
     if (e.target.closest('input')) return;
     if (App.viewerVisible) {
       if (e.key === 'Escape') { closeViewer(); history.back(); }
@@ -1040,38 +1198,50 @@ function setupEvents() {
 
   // Viewer swipe
   let sx = 0;
-  $('#viewer-img-wrap').addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; }, { passive: true });
-  $('#viewer-img-wrap').addEventListener('touchend', (e) => {
+  $('#viewer-img-wrap').addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+  $('#viewer-img-wrap').addEventListener('touchend', e => {
     const dx = e.changedTouches[0].clientX - sx;
-    if (Math.abs(dx) > 50) { dx > 0 ? viewerPrev() : viewerNext(); }
+    if (Math.abs(dx) > 50) dx > 0 ? viewerPrev() : viewerNext();
   });
-
-  // Viewer mouse → show toolbar
-  $('#viewer').addEventListener('mousemove', () => { if (App.viewerVisible) showViewerToolbar(); });
+  $('#viewer').addEventListener('mousemove', () => { if (App.viewerVisible) showViewerBar(); });
 
   // Viewer wheel
-  let wheelCD = false;
-  $('#viewer').addEventListener('wheel', (e) => {
-    if (!App.viewerVisible || wheelCD) return;
-    e.preventDefault(); wheelCD = true;
-    setTimeout(() => { wheelCD = false; }, 200);
+  let wCD = false;
+  $('#viewer').addEventListener('wheel', e => {
+    if (!App.viewerVisible || wCD) return;
+    e.preventDefault(); wCD = true;
+    setTimeout(() => wCD = false, 200);
     e.deltaY > 0 ? viewerNext() : viewerPrev();
   }, { passive: false });
 
-  // Browser back
-  window.addEventListener('popstate', () => { if (App.viewerVisible) closeViewer(); });
+  // ── History API: popstate ──
+  window.addEventListener('popstate', () => {
+    if (App.viewerVisible) {
+      closeViewer();
+      return;
+    }
+    const p = pathFromHash() ?? '';
+    if (p !== App.currentPath) {
+      App.currentPath = p;
+      IDB.put('settings', 'lastPath', p);
+      updateNavButtons();
+      renderBreadcrumb();
+      renderFavorites();
+      loadFolder(p);
+    }
+  });
 }
 
-function handleItemOpen(itemEl) {
-  const entry = App.entries[parseInt(itemEl.dataset.index)];
+function handleOpen(el) {
+  const entry = App.entries[parseInt(el.dataset.index)];
   if (!entry) return;
-  if (entry['.tag'] === 'folder') navigate(entryRelativePath(entry));
-  else if (IMAGE_EXTENSIONS.has(ext(entry.name))) openViewer(entry);
+  if (entry['.tag'] === 'folder') navigate(entryRelPath(entry));
+  else if (IMG_EXT.has(ext(entry.name))) openViewer(entry);
 }
 
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 // Start
-// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', init);
 </script>
 </body>
