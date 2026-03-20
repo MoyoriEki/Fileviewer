@@ -235,6 +235,7 @@ body {
 }
 .grid-item.drag-over-before::before { left: -3px; }
 .grid-item.drag-over-after::after { right: -3px; }
+.grid-item.drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--accent-dim); }
 
 .grid-thumb {
   width: 100%; aspect-ratio: 1;
@@ -1214,18 +1215,53 @@ function initDragReorder() {
   grid.addEventListener('dragend', e => { document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target')); dragSrcIdx = null; });
   grid.addEventListener('dragover', e => {
     if (dragSrcIdx === null) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move';
-    const item = e.target.closest('.grid-item[data-tag="file"]'); if (!item) return;
-    document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => el.classList.remove('drag-over-before','drag-over-after'));
-    const rect = item.getBoundingClientRect();
-    (e.clientX < rect.left + rect.width/2) ? item.classList.add('drag-over-before') : item.classList.add('drag-over-after');
+    document.querySelectorAll('.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('drag-over-before','drag-over-after','drop-target'));
+    const item = e.target.closest('.grid-item');
+    if (!item) return;
+    if (item.dataset.tag === 'folder' && !App.selected.has(parseInt(item.dataset.index))) {
+      item.classList.add('drop-target');
+    } else if (item.dataset.tag === 'file') {
+      const rect = item.getBoundingClientRect();
+      (e.clientX < rect.left + rect.width/2) ? item.classList.add('drag-over-before') : item.classList.add('drag-over-after');
+    }
   });
-  grid.addEventListener('drop', e => {
-    e.preventDefault(); if (dragSrcIdx === null) return;
-    const item = e.target.closest('.grid-item[data-tag="file"]'); if (!item) return;
-    const dropIdx = parseInt(item.dataset.index);
-    const rect = item.getBoundingClientRect(), before = e.clientX < rect.left + rect.width/2;
-    reorderEntries(dropIdx, before);
-    document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => el.classList.remove('drag-over-before','drag-over-after'));
+  grid.addEventListener('drop', async e => {
+    e.preventDefault();
+    document.querySelectorAll('.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('drag-over-before','drag-over-after','drop-target'));
+    if (dragSrcIdx === null) return;
+    const item = e.target.closest('.grid-item');
+    if (!item) return;
+    // Drop onto folder → move into it
+    if (item.dataset.tag === 'folder') {
+      const folderIdx = parseInt(item.dataset.index);
+      if (App.selected.has(folderIdx)) return; // can't drop onto selected folder
+      const destEntry = App.entries[folderIdx];
+      const destPath = entryRelPath(destEntry);
+      const items = App.selected.size > 0
+        ? [...App.selected].map(i => App.entries[i]).filter(Boolean)
+        : (App.entries[dragSrcIdx] ? [App.entries[dragSrcIdx]] : []);
+      if (!items.length) return;
+      const invalid = items.some(it => {
+        const rel = entryRelPath(it);
+        return it === destEntry || (it['.tag'] === 'folder' && destPath.startsWith(rel + '/'));
+      });
+      if (invalid) { toast('移動先が無効です'); return; }
+      toast('移動中...');
+      let ok = 0, fail = 0;
+      for (const it of items) {
+        try { await App.storage.move(entryRelPath(it), destPath + '/' + it.name); ok++; } catch(_) { fail++; }
+      }
+      toast(fail ? `${ok}件移動（${fail}件エラー）` : `${ok}件移動しました`);
+      App.selected.clear(); updateSelBadge();
+      loadFolder(App.currentPath); loadTree();
+      return;
+    }
+    // Drop onto file → reorder
+    if (item.dataset.tag === 'file') {
+      const dropIdx = parseInt(item.dataset.index);
+      const rect = item.getBoundingClientRect(), before = e.clientX < rect.left + rect.width/2;
+      reorderEntries(dropIdx, before);
+    }
   });
 
   // Touch D&D
@@ -1246,13 +1282,18 @@ function initDragReorder() {
     if (tClone) { e.preventDefault(); posC(e.touches[0]);
       document.querySelectorAll('.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('drag-over-before','drag-over-after','drop-target'));
       const pt = e.touches[0];
-      // Check tree row first
       const treeRow = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.tree-row');
       if (treeRow) { treeRow.classList.add('drop-target'); }
       else {
-        // Check grid file for reorder
-        const under = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.grid-item[data-tag="file"]');
-        if (under) { const r = under.getBoundingClientRect(); (pt.clientX < r.left+r.width/2) ? under.classList.add('drag-over-before') : under.classList.add('drag-over-after'); }
+        const under = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.grid-item');
+        if (under) {
+          if (under.dataset.tag === 'folder' && !App.selected.has(parseInt(under.dataset.index))) {
+            under.classList.add('drop-target');
+          } else if (under.dataset.tag === 'file') {
+            const r = under.getBoundingClientRect();
+            (pt.clientX < r.left+r.width/2) ? under.classList.add('drag-over-before') : under.classList.add('drag-over-after');
+          }
+        }
       }
     } else clearTimeout(tLP);
   }, { passive: false });
@@ -1260,28 +1301,51 @@ function initDragReorder() {
     clearTimeout(tLP);
     if (tClone && tSrc !== null) {
       const pt = e.changedTouches[0];
-      // Check if dropped on tree
+      const items = App.selected.size > 0
+        ? [...App.selected].map(i => App.entries[i]).filter(Boolean)
+        : (App.entries[tSrc] ? [App.entries[tSrc]] : []);
+
+      let handled = false;
+
+      // Check tree row
       const treeRow = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.tree-row');
-      if (treeRow) {
+      if (treeRow && items.length) {
         const destPath = treeRow.dataset.path;
-        const items = App.selected.size > 0
-          ? [...App.selected].map(i => App.entries[i]).filter(Boolean)
-          : (App.entries[tSrc] ? [App.entries[tSrc]] : []);
-        if (items.length) {
-          const invalid = items.some(it => { const rel = entryRelPath(it); return destPath === parentPath(rel) || (it['.tag']==='folder' && (destPath===rel||destPath.startsWith(rel+'/'))); });
-          if (!invalid) {
-            toast('移動中...');
-            let ok=0, fail=0;
-            for (const it of items) { try { await App.storage.move(entryRelPath(it), destPath ? destPath+'/'+it.name : it.name); ok++; } catch(_) { fail++; } }
-            toast(fail ? `${ok}件移動（${fail}件エラー）` : `${ok}件移動しました`);
-            App.selected.clear(); updateSelBadge(); loadFolder(App.currentPath); loadTree();
-          } else toast('移動先が無効です');
-        }
-      } else {
-        // Grid reorder (files only)
-        const under = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.grid-item[data-tag="file"]');
-        if (under) { const di = parseInt(under.dataset.index), r = under.getBoundingClientRect(); if (di !== tSrc) reorderEntries(di, pt.clientX < r.left + r.width/2); }
+        const invalid = items.some(it => { const rel = entryRelPath(it); return destPath === parentPath(rel) || (it['.tag']==='folder' && (destPath===rel||destPath.startsWith(rel+'/'))); });
+        if (!invalid) {
+          toast('移動中...'); let ok=0, fail=0;
+          for (const it of items) { try { await App.storage.move(entryRelPath(it), destPath ? destPath+'/'+it.name : it.name); ok++; } catch(_) { fail++; } }
+          toast(fail ? `${ok}件移動（${fail}件エラー）` : `${ok}件移動しました`);
+          App.selected.clear(); updateSelBadge(); loadFolder(App.currentPath); loadTree();
+        } else toast('移動先が無効です');
+        handled = true;
       }
+
+      // Check grid folder
+      if (!handled) {
+        const under = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.grid-item');
+        if (under && under.dataset.tag === 'folder' && items.length) {
+          const folderIdx = parseInt(under.dataset.index);
+          if (!App.selected.has(folderIdx)) {
+            const destEntry = App.entries[folderIdx];
+            const destPath = entryRelPath(destEntry);
+            const invalid = items.some(it => it === destEntry || (it['.tag']==='folder' && destPath.startsWith(entryRelPath(it)+'/')));
+            if (!invalid) {
+              toast('移動中...'); let ok=0, fail=0;
+              for (const it of items) { try { await App.storage.move(entryRelPath(it), destPath+'/'+it.name); ok++; } catch(_) { fail++; } }
+              toast(fail ? `${ok}件移動（${fail}件エラー）` : `${ok}件移動しました`);
+              App.selected.clear(); updateSelBadge(); loadFolder(App.currentPath); loadTree();
+            } else toast('移動先が無効です');
+            handled = true;
+          }
+        }
+        // Grid file reorder
+        if (!handled && under && under.dataset.tag === 'file') {
+          const di = parseInt(under.dataset.index), r = under.getBoundingClientRect();
+          if (di !== tSrc) reorderEntries(di, pt.clientX < r.left + r.width/2);
+        }
+      }
+
       tClone.remove(); tClone = null;
       document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
       tSrc = null; App._touchDragging = false;
