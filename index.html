@@ -423,7 +423,7 @@ const App = {
   prefetchCache: {},
 };
 
-const BASE_PATH = '/DropboxFiler';
+const BASE_PATH = '';
 const STORAGE_PREFIX = 'dbxfiler';
 const THUMB_EXTENSIONS = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','ppm']);
 const IMAGE_EXTENSIONS = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','svg']);
@@ -497,7 +497,6 @@ const $$ = (s) => document.querySelectorAll(s);
 function ext(name) { const i = name.lastIndexOf('.'); return i > 0 ? name.slice(i + 1).toLowerCase() : ''; }
 function baseName(p) { return p.split('/').pop(); }
 function parentPath(p) { const parts = p.split('/'); parts.pop(); return parts.join('/'); }
-function fullPath(rel) { return rel ? `${BASE_PATH}/${rel}` : BASE_PATH; }
 
 function toast(msg) {
   const el = $('#toast');
@@ -535,7 +534,7 @@ async function init() {
   const savedPath = await IDB.get('settings', 'lastPath');
 
   App.storage = new StorageBridge({
-    basePath: BASE_PATH,
+    basePath: '',
     storagePrefix: STORAGE_PREFIX,
     ui: true,
     uiTarget: '#dbx-ui',
@@ -630,7 +629,7 @@ function updateNavButtons() {
 function renderBreadcrumb() {
   const bc = $('#breadcrumb');
   const parts = App.currentPath ? App.currentPath.split('/') : [];
-  let html = `<span class="bc-item${parts.length === 0 ? ' current' : ''}" data-path="">DropboxFiler</span>`;
+  let html = `<span class="bc-item${parts.length === 0 ? ' current' : ''}" data-path="">Dropbox</span>`;
   let acc = '';
   for (let i = 0; i < parts.length; i++) {
     acc += (acc ? '/' : '') + parts[i];
