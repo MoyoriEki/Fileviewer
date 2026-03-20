@@ -110,6 +110,11 @@ body {
   width: var(--sidebar-w); min-width: var(--sidebar-w);
   background: var(--bg-raised); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
+  transition: margin-left 0.15s, opacity 0.15s;
+}
+#sidebar.hidden {
+  margin-left: calc(var(--sidebar-w) * -1);
+  min-width: 0; width: 0; opacity: 0; pointer-events: none; border: none;
 }
 #sidebar-header {
   padding: 10px 12px 6px; font-size: 11px; font-weight: 500;
@@ -324,7 +329,10 @@ body {
   #sidebar.mobile-open {
     display: flex; position: fixed; top: var(--toolbar-h); left: 0; bottom: 0;
     z-index: 50; box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+    margin-left: 0; width: var(--sidebar-w); min-width: var(--sidebar-w);
+    opacity: 1; pointer-events: auto; border-right: 1px solid var(--border);
   }
+  #sidebar.hidden { display: none; }
   #main { padding: 6px; }
 }
 </style>
@@ -583,6 +591,8 @@ async function init() {
   const sf = await IDB.get('settings', 'favorites');
   if (sf) App.favorites = sf;
   const sp = await IDB.get('settings', 'lastPath');
+  const sbHidden = await IDB.get('settings', 'sidebarHidden');
+  if (sbHidden) document.getElementById('sidebar').classList.add('hidden');
 
   App.storage = new StorageBridge({ basePath: '', storagePrefix: 'dbxfiler', ui: true, uiTarget: '#dbx-ui' });
 
@@ -1097,7 +1107,16 @@ function setupEvents() {
   $('#btn-up').onclick = () => { if (App.currentPath) navigate(parentPath(App.currentPath)); };
   $('#btn-refresh').onclick = () => loadFolder(App.currentPath);
   $('#btn-disconnect').onclick = () => App.storage.disconnect();
-  $('#btn-sidebar').onclick = () => $('#sidebar').classList.toggle('mobile-open');
+  $('#btn-sidebar').onclick = () => {
+    const sb = $('#sidebar');
+    const isMobile = window.innerWidth <= 700;
+    if (isMobile) {
+      sb.classList.toggle('mobile-open');
+    } else {
+      sb.classList.toggle('hidden');
+      IDB.put('settings', 'sidebarHidden', sb.classList.contains('hidden'));
+    }
+  };
 
   // Breadcrumb
   $('#breadcrumb').addEventListener('click', e => {
