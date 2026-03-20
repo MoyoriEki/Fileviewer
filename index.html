@@ -321,6 +321,80 @@ body {
 }
 #toast.show { opacity: 1; }
 
+/* ── Sort Mode ──────────────────────────────────────────── */
+#sort-mode-bar {
+  display: none; align-items: center; gap: 8px;
+  height: 36px; padding: 0 10px; background: var(--accent-dim);
+  border-bottom: 1px solid var(--accent); font-size: 12.5px;
+}
+#sort-mode-bar.active { display: flex; }
+#sort-mode-bar .sm-label { color: var(--accent); font-weight: 500; flex-shrink: 0; }
+#sort-mode-bar .sm-spacer { flex: 1; }
+.sm-btn {
+  padding: 4px 12px; border: 1px solid var(--accent); border-radius: var(--radius);
+  background: transparent; color: var(--accent); cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 500; transition: all 0.1s;
+}
+.sm-btn:hover { background: var(--accent); color: #000; }
+.sm-btn.danger { border-color: var(--danger); color: var(--danger); }
+.sm-btn.danger:hover { background: var(--danger); color: #fff; }
+
+/* Drag styles */
+.grid-item.sortable { cursor: grab; }
+.grid-item.sortable:active { cursor: grabbing; }
+.grid-item.dragging { opacity: 0.3; }
+.grid-item.drag-over-before::before,
+.grid-item.drag-over-after::after {
+  content: ''; position: absolute; top: 4px; bottom: 4px; width: 3px;
+  background: var(--accent); border-radius: 2px; z-index: 5;
+}
+.grid-item.drag-over-before::before { left: -2px; }
+.grid-item.drag-over-after::after { right: -2px; }
+.grid-item { position: relative; }
+
+/* Touch drag clone */
+.touch-drag-clone {
+  position: fixed; z-index: 999; pointer-events: none;
+  opacity: 0.8; transform: scale(0.9);
+  border: 2px solid var(--accent); border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+
+/* ── Rename Batch Modal ────────────────────────────────── */
+#modal-batch-rename .modal-box { max-width: 520px; }
+.preset-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+}
+.preset-row label { font-size: 12px; color: var(--text-muted); min-width: 70px; }
+.preset-select {
+  flex: 1; padding: 6px 8px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--bg); color: var(--text);
+  font-family: inherit; font-size: 12.5px; outline: none;
+}
+.preset-select:focus { border-color: var(--accent); }
+#prefix-input {
+  width: 120px; padding: 6px 8px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--bg); color: var(--text);
+  font-family: inherit; font-size: 12.5px; outline: none;
+}
+#prefix-input:focus { border-color: var(--accent); }
+#prefix-row { display: none; }
+#prefix-row.show { display: flex; }
+
+#rename-preview {
+  max-height: 240px; overflow-y: auto; margin: 10px 0;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 11.5px;
+}
+.rp-row {
+  display: flex; padding: 4px 10px; gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.rp-row:last-child { border-bottom: none; }
+.rp-old { flex: 1; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-arrow { color: var(--accent); flex-shrink: 0; }
+.rp-new { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ── Responsive ────────────────────────────────────────── */
 @media (max-width: 700px) {
   #sidebar { display: none; }
@@ -360,8 +434,17 @@ body {
     <div class="tb-spacer"></div>
     <input type="range" id="thumb-slider" min="80" max="320" value="160" title="サムネサイズ">
     <div class="tb-spacer"></div>
+    <button class="tb-btn" id="btn-sort-mode" title="並び替えモード">⇅</button>
+    <button class="tb-btn" id="btn-undo" title="リネームを元に戻す" style="display:none">↩</button>
     <button class="tb-btn" id="btn-refresh" title="更新">⟳</button>
     <button class="tb-btn" id="btn-disconnect" title="切断">⏻</button>
+  </div>
+  <div id="sort-mode-bar">
+    <span class="sm-label">⇅ 並び替えモード</span>
+    <span class="sm-spacer"></span>
+    <button class="sm-btn" id="btn-rename-exec">リネーム実行</button>
+    <button class="sm-btn" id="btn-sort-reset">元に戻す</button>
+    <button class="sm-btn danger" id="btn-sort-cancel">終了</button>
   </div>
   <div id="body">
     <div id="sidebar">
@@ -408,6 +491,34 @@ body {
 
 <div id="toast"></div>
 
+<div class="modal-overlay" id="modal-batch-rename">
+  <div class="modal-box">
+    <h3>連番リネーム</h3>
+    <div class="preset-row">
+      <label>プリセット</label>
+      <select class="preset-select" id="preset-select">
+        <option value="nnn">番号のみ（3桁）: 001.ext</option>
+        <option value="nn">番号のみ（2桁）: 01.ext</option>
+        <option value="prefix_nnn">プレフィックス+番号: prefix_001.ext</option>
+        <option value="custom">カスタム</option>
+      </select>
+    </div>
+    <div class="preset-row" id="prefix-row">
+      <label>プレフィックス</label>
+      <input type="text" id="prefix-input" placeholder="例: ネーム" autocomplete="off">
+    </div>
+    <div class="preset-row" id="custom-row" style="display:none">
+      <label>パターン</label>
+      <input type="text" id="custom-input" class="preset-select" placeholder="{NNN}.{ext}" autocomplete="off">
+    </div>
+    <div id="rename-preview"></div>
+    <div class="modal-actions">
+      <button class="modal-btn cancel" id="batch-cancel">キャンセル</button>
+      <button class="modal-btn primary" id="batch-exec">実行</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -431,6 +542,11 @@ const App = {
   prefetchCache: {},    // relativePath → objectURL
   // Navigation
   navGen: 0,            // incremented on each navigate, to discard stale loads
+  // Phase 2: Sort mode
+  sortModeActive: false,
+  sortedFiles: [],      // reordered file entries (files only, not folders)
+  originalFiles: [],    // original order backup for reset
+  undoHistory: null,    // { entries: [{from, to}] } for undo after rename
 };
 
 const THUMB_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','ppm']);
@@ -976,6 +1092,388 @@ async function deleteEntry(entry) {
 }
 
 // ════════════════════════════════════════
+// Phase 2: Sort Mode & Batch Rename
+// ════════════════════════════════════════
+function enterSortMode() {
+  if (App.sortModeActive) return;
+  App.sortModeActive = true;
+  // Separate folders and files — only files are reorderable
+  const folders = App.entries.filter(e => e['.tag'] === 'folder');
+  const files = App.entries.filter(e => e['.tag'] === 'file');
+  App.originalFiles = [...files];
+  App.sortedFiles = [...files];
+  App.undoHistory = null;
+  $('#sort-mode-bar').classList.add('active');
+  // Re-render with drag handles
+  renderSortableGrid();
+}
+
+function exitSortMode() {
+  App.sortModeActive = false;
+  App.sortedFiles = [];
+  App.originalFiles = [];
+  $('#sort-mode-bar').classList.remove('active');
+  // Reload from Dropbox to restore proper entries
+  loadFolder(App.currentPath);
+}
+
+function resetSortOrder() {
+  App.sortedFiles = [...App.originalFiles];
+  renderSortableGrid();
+  toast('並び順をリセットしました');
+}
+
+function renderSortableGrid() {
+  const grid = $('#grid');
+  const folders = App.entries.filter(e => e['.tag'] === 'folder');
+  const files = App.sortedFiles;
+  const all = [...folders, ...files];
+
+  // Update App.entries so thumb loading uses correct indices
+  App.entries = all;
+
+  grid.innerHTML = all.map((entry, idx) => {
+    const isFolder = entry['.tag'] === 'folder';
+    const e = ext(entry.name);
+    const isFile = !isFolder;
+    return `<div class="grid-item${isFile ? ' sortable' : ''}" data-index="${idx}" data-tag="${entry['.tag']}" ${isFile ? 'draggable="true"' : ''}>
+      <div class="grid-thumb" id="thumb-${idx}">
+        ${isFolder ? '<span class="folder-icon">📁</span>'
+          : (THUMB_EXT.has(e) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">📄</span>')}
+      </div>
+      <div class="grid-name" title="${entry.name}">${entry.name}</div>
+    </div>`;
+  }).join('');
+
+  const gen = App.navGen;
+  setupObserver(gen);
+  loadFolderPreviews(gen);
+
+  setupDragReorder(folders.length);
+}
+
+// ── D&D Reorder (desktop: HTML5, mobile: touch) ──
+let dragSrcIdx = null;
+
+function setupDragReorder(folderCount) {
+  // Store folderCount for event delegation (set fresh each render)
+  App._sortFolderCount = folderCount;
+}
+
+// Called once in setupEvents — all D&D via event delegation
+function initDragReorder() {
+  const grid = $('#grid');
+
+  // ── HTML5 DnD (desktop) ──
+  grid.addEventListener('dragstart', e => {
+    if (!App.sortModeActive) return;
+    const item = e.target.closest('.grid-item.sortable');
+    if (!item) { e.preventDefault(); return; }
+    dragSrcIdx = parseInt(item.dataset.index) - App._sortFolderCount;
+    item.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+  });
+  grid.addEventListener('dragend', e => {
+    const item = e.target.closest('.grid-item');
+    if (item) item.classList.remove('dragging');
+    document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => {
+      el.classList.remove('drag-over-before', 'drag-over-after');
+    });
+    dragSrcIdx = null;
+  });
+  grid.addEventListener('dragover', e => {
+    if (!App.sortModeActive || dragSrcIdx === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const item = e.target.closest('.grid-item.sortable');
+    if (!item) return;
+    document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => {
+      el.classList.remove('drag-over-before', 'drag-over-after');
+    });
+    const rect = item.getBoundingClientRect();
+    const mid = rect.left + rect.width / 2;
+    if (e.clientX < mid) item.classList.add('drag-over-before');
+    else item.classList.add('drag-over-after');
+  });
+  grid.addEventListener('drop', e => {
+    if (!App.sortModeActive || dragSrcIdx === null) return;
+    e.preventDefault();
+    const item = e.target.closest('.grid-item.sortable');
+    if (!item) return;
+    const dropIdx = parseInt(item.dataset.index) - App._sortFolderCount;
+    if (dropIdx === dragSrcIdx) return;
+    const rect = item.getBoundingClientRect();
+    const mid = rect.left + rect.width / 2;
+    reorderFiles(dragSrcIdx, dropIdx, e.clientX < mid);
+    document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => {
+      el.classList.remove('drag-over-before', 'drag-over-after');
+    });
+  });
+
+  // ── Touch DnD (mobile) ──
+  let touchSrcIdx = null, touchClone = null, touchLP = null;
+
+  grid.addEventListener('touchstart', e => {
+    if (!App.sortModeActive) return;
+    const item = e.target.closest('.grid-item.sortable');
+    if (!item) return;
+    touchLP = setTimeout(() => {
+      touchSrcIdx = parseInt(item.dataset.index) - App._sortFolderCount;
+      item.classList.add('dragging');
+      touchClone = item.cloneNode(true);
+      touchClone.className = 'touch-drag-clone';
+      touchClone.style.width = item.offsetWidth + 'px';
+      touchClone.style.height = item.offsetHeight + 'px';
+      document.body.appendChild(touchClone);
+      posClone(e.touches[0]);
+    }, 400);
+  }, { passive: true });
+
+  grid.addEventListener('touchmove', e => {
+    if (touchClone) {
+      e.preventDefault();
+      posClone(e.touches[0]);
+      document.querySelectorAll('.drag-over-before,.drag-over-after').forEach(el => {
+        el.classList.remove('drag-over-before', 'drag-over-after');
+      });
+      const under = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY);
+      const item = under?.closest('.grid-item.sortable');
+      if (item) {
+        const rect = item.getBoundingClientRect();
+        if (e.touches[0].clientX < rect.left + rect.width / 2) item.classList.add('drag-over-before');
+        else item.classList.add('drag-over-after');
+      }
+    } else {
+      clearTimeout(touchLP);
+    }
+  }, { passive: false });
+
+  grid.addEventListener('touchend', e => {
+    clearTimeout(touchLP);
+    if (touchClone && touchSrcIdx !== null) {
+      const under = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      const item = under?.closest('.grid-item.sortable');
+      if (item) {
+        const dropIdx = parseInt(item.dataset.index) - App._sortFolderCount;
+        if (dropIdx !== touchSrcIdx) {
+          const rect = item.getBoundingClientRect();
+          reorderFiles(touchSrcIdx, dropIdx, e.changedTouches[0].clientX < rect.left + rect.width / 2);
+        }
+      }
+      touchClone.remove(); touchClone = null;
+      document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after').forEach(el => {
+        el.classList.remove('dragging', 'drag-over-before', 'drag-over-after');
+      });
+      touchSrcIdx = null;
+    }
+  });
+
+  function posClone(t) { if (touchClone) { touchClone.style.left = (t.clientX - 40) + 'px'; touchClone.style.top = (t.clientY - 40) + 'px'; } }
+}
+
+function reorderFiles(fromIdx, toIdx, before) {
+  const item = App.sortedFiles.splice(fromIdx, 1)[0];
+  let insertAt = toIdx;
+  if (fromIdx < toIdx) insertAt--;
+  if (!before) insertAt++;
+  App.sortedFiles.splice(insertAt, 0, item);
+  renderSortableGrid();
+}
+
+// ── Batch Rename ──
+function openBatchRename() {
+  if (!App.sortedFiles.length) { toast('ファイルがありません'); return; }
+  $('#preset-select').value = 'nnn';
+  $('#prefix-input').value = '';
+  $('#custom-input').value = '';
+  $('#prefix-row').classList.remove('show');
+  $('#custom-row').style.display = 'none';
+  updateRenamePreview();
+  $('#modal-batch-rename').classList.add('show');
+}
+
+function updateRenamePreview() {
+  const files = App.sortedFiles;
+  const preset = $('#preset-select').value;
+  const prefix = $('#prefix-input').value.trim();
+  const customPat = $('#custom-input').value.trim();
+  const preview = $('#rename-preview');
+
+  const newNames = files.map((f, i) => {
+    const e = ext(f.name);
+    const num = i + 1;
+    switch (preset) {
+      case 'nnn': return pad(num, 3) + (e ? '.' + e : '');
+      case 'nn': return pad(num, 2) + (e ? '.' + e : '');
+      case 'prefix_nnn': return (prefix || 'file') + '_' + pad(num, 3) + (e ? '.' + e : '');
+      case 'custom': return applyCustom(customPat, num, e, f.name);
+      default: return f.name;
+    }
+  });
+
+  preview.innerHTML = files.map((f, i) => `
+    <div class="rp-row">
+      <span class="rp-old">${f.name}</span>
+      <span class="rp-arrow">→</span>
+      <span class="rp-new">${newNames[i]}</span>
+    </div>
+  `).join('');
+}
+
+function pad(n, digits) {
+  return String(n).padStart(digits, '0');
+}
+
+function applyCustom(pattern, num, e, origName) {
+  if (!pattern) return origName;
+  return pattern
+    .replace('{NNN}', pad(num, 3))
+    .replace('{NN}', pad(num, 2))
+    .replace('{N}', String(num))
+    .replace('{ext}', e)
+    .replace('{name}', origName.replace(/\.[^.]+$/, ''));
+}
+
+async function executeBatchRename() {
+  const files = App.sortedFiles;
+  const preset = $('#preset-select').value;
+  const prefix = $('#prefix-input').value.trim();
+  const customPat = $('#custom-input').value.trim();
+
+  const newNames = files.map((f, i) => {
+    const e = ext(f.name);
+    const num = i + 1;
+    switch (preset) {
+      case 'nnn': return pad(num, 3) + (e ? '.' + e : '');
+      case 'nn': return pad(num, 2) + (e ? '.' + e : '');
+      case 'prefix_nnn': return (prefix || 'file') + '_' + pad(num, 3) + (e ? '.' + e : '');
+      case 'custom': return applyCustom(customPat, num, e, f.name);
+      default: return f.name;
+    }
+  });
+
+  // Check if any renames needed
+  const renames = [];
+  for (let i = 0; i < files.length; i++) {
+    if (files[i].name !== newNames[i]) {
+      renames.push({ entry: files[i], newName: newNames[i] });
+    }
+  }
+  if (!renames.length) { toast('変更なし'); return; }
+
+  if (!confirm(`${renames.length}件のファイルをリネームしますか？`)) return;
+
+  $('#modal-batch-rename').classList.remove('show');
+  toast('リネーム中...');
+
+  // 2-pass rename to avoid collisions
+  // Pass 1: rename to temp names
+  const tempPrefix = '__filer_tmp_';
+  const undoEntries = [];
+  let failCount = 0;
+
+  try {
+    for (let i = 0; i < renames.length; i++) {
+      const r = renames[i];
+      const rel = entryRelPath(r.entry);
+      const par = parentPath(rel);
+      const tempName = tempPrefix + i + '_' + r.newName;
+      const tempRel = par ? par + '/' + tempName : tempName;
+      try {
+        await App.storage.move(rel, tempRel);
+        renames[i]._tempRel = tempRel;
+        undoEntries.push({ from: tempRel, origRel: rel, newName: r.newName });
+      } catch(e) {
+        console.error('Rename pass 1 failed:', r.entry.name, e);
+        failCount++;
+        renames[i]._tempRel = null;
+      }
+    }
+
+    // Pass 2: rename from temp to final
+    for (let i = 0; i < renames.length; i++) {
+      if (!renames[i]._tempRel) continue;
+      const rel = renames[i]._tempRel;
+      const par = parentPath(rel);
+      const finalRel = par ? par + '/' + renames[i].newName : renames[i].newName;
+      try {
+        await App.storage.move(rel, finalRel);
+        undoEntries[i].finalRel = finalRel;
+      } catch(e) {
+        console.error('Rename pass 2 failed:', renames[i].newName, e);
+        failCount++;
+      }
+    }
+
+    // Store undo info
+    App.undoHistory = {
+      entries: undoEntries.filter(u => u.finalRel).map(u => ({
+        from: u.finalRel,
+        to: u.origRel,
+      })),
+    };
+
+    if (failCount > 0) {
+      toast(`完了（${failCount}件エラー）`);
+    } else {
+      toast(`${renames.length}件リネーム完了`);
+    }
+  } catch(e) {
+    toast('リネームエラー: ' + e.message);
+  }
+
+  exitSortMode();
+  loadFolder(App.currentPath);
+  updateUndoBtn();
+}
+
+function updateUndoBtn() {
+  $('#btn-undo').style.display = (App.undoHistory && App.undoHistory.entries.length) ? '' : 'none';
+}
+
+async function undoRename() {
+  if (!App.undoHistory || !App.undoHistory.entries.length) {
+    toast('元に戻す操作がありません');
+    return;
+  }
+  if (!confirm(`${App.undoHistory.entries.length}件のリネームを元に戻しますか？`)) return;
+
+  toast('元に戻しています...');
+  let failCount = 0;
+
+  // Reverse: move from final name back to original
+  // Also 2-pass to avoid collision
+  const entries = App.undoHistory.entries;
+  const tempPrefix = '__filer_undo_';
+
+  // Pass 1: final → temp
+  for (let i = 0; i < entries.length; i++) {
+    const u = entries[i];
+    const tempRel = parentPath(u.from) ? parentPath(u.from) + '/' + tempPrefix + i + '_' + baseName(u.to) : tempPrefix + i + '_' + baseName(u.to);
+    try {
+      await App.storage.move(u.from, tempRel);
+      entries[i]._tempRel = tempRel;
+    } catch(e) { failCount++; entries[i]._tempRel = null; }
+  }
+
+  // Pass 2: temp → original
+  for (let i = 0; i < entries.length; i++) {
+    if (!entries[i]._tempRel) continue;
+    try {
+      await App.storage.move(entries[i]._tempRel, entries[i].to);
+    } catch(e) { failCount++; }
+  }
+
+  App.undoHistory = null;
+  if (failCount > 0) toast(`元に戻す完了（${failCount}件エラー）`);
+  else toast('元に戻しました');
+
+  updateUndoBtn();
+  loadFolder(App.currentPath);
+}
+
+// ════════════════════════════════════════
 // Image Viewer
 // ════════════════════════════════════════
 function openViewer(entry) {
@@ -1157,6 +1655,7 @@ function setupEvents() {
   });
   let lpT = null;
   $('#grid').addEventListener('touchstart', e => {
+    if (App.sortModeActive) return; // D&D handles touch in sort mode
     const item = e.target.closest('.grid-item');
     if (!item) return;
     lpT = setTimeout(() => {
@@ -1181,6 +1680,31 @@ function setupEvents() {
     if (e.key === 'Escape') $('#modal-rename').classList.remove('show');
   });
 
+  // Phase 2: Sort mode
+  $('#btn-sort-mode').onclick = () => {
+    if (App.sortModeActive) exitSortMode();
+    else enterSortMode();
+  };
+  $('#btn-sort-cancel').onclick = exitSortMode;
+  $('#btn-sort-reset').onclick = resetSortOrder;
+  $('#btn-rename-exec').onclick = openBatchRename;
+  $('#btn-undo').onclick = undoRename;
+
+  // Batch rename modal
+  $('#batch-cancel').onclick = () => $('#modal-batch-rename').classList.remove('show');
+  $('#batch-exec').onclick = executeBatchRename;
+  $('#preset-select').onchange = () => {
+    const v = $('#preset-select').value;
+    $('#prefix-row').classList.toggle('show', v === 'prefix_nnn');
+    $('#custom-row').style.display = v === 'custom' ? 'flex' : 'none';
+    updateRenamePreview();
+  };
+  $('#prefix-input').oninput = updateRenamePreview;
+  $('#custom-input').oninput = updateRenamePreview;
+
+  // D&D reorder (one-time delegation setup)
+  initDragReorder();
+
   // Viewer
   $('#viewer-close').onclick = () => { closeViewer(); history.back(); };
   $('#tap-left').onclick = viewerPrev;
@@ -1198,6 +1722,8 @@ function setupEvents() {
       return;
     }
     if (e.key === 'Backspace') { e.preventDefault(); if (App.currentPath) navigate(parentPath(App.currentPath)); }
+    if (e.key === 'z' && (e.ctrlKey || e.metaKey) && App.undoHistory) { e.preventDefault(); undoRename(); }
+    if (e.key === 'Escape' && App.sortModeActive) exitSortMode();
   });
 
   // Viewer swipe
@@ -1237,6 +1763,7 @@ function setupEvents() {
 }
 
 function handleOpen(el) {
+  if (App.sortModeActive) return; // no navigation in sort mode
   const entry = App.entries[parseInt(el.dataset.index)];
   if (!entry) return;
   if (entry['.tag'] === 'folder') navigate(entryRelPath(entry));
