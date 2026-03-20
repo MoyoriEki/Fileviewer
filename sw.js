@@ -1,6 +1,9 @@
 const CACHE = 'filer-v2';
 const PRECACHE = [
   './',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
   'https://moyorieki.github.io/storage-bridge/storage-bridge.css',
   'https://moyorieki.github.io/storage-bridge/storage-bridge.js',
   'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600&display=swap'
