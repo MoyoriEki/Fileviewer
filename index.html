@@ -177,7 +177,7 @@ body {
 }
 #sidebar.hidden { display: none; }
 #sidebar-header { padding: 10px 12px 6px; font-size: 11px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase; }
-#fav-list { flex: 1; overflow-y: auto; padding: 2px 6px 10px; }
+#fav-list { overflow-y: auto; padding: 2px 6px 10px; max-height: 40%; }
 .fav-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--radius); cursor: pointer; font-size: 12.5px; color: var(--text); }
 .fav-item:hover { background: var(--bg-hover); }
 .fav-item.active { background: var(--accent-dim); color: var(--accent); }
@@ -335,6 +335,38 @@ body {
 #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 8px 18px; border-radius: var(--radius); background: var(--bg-raised); border: 1px solid var(--border); color: var(--text); font-size: 12.5px; z-index: 500; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
 #toast.show { opacity: 1; }
 
+
+/* ── Folder Tree ───────────────────────────────────────── */
+#tree-section { border-top: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 0; }
+#tree-header { padding: 8px 12px 4px; font-size: 11px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase; flex-shrink: 0; }
+#tree-list { flex: 1; overflow-y: auto; padding: 2px 4px 8px; font-size: 12px; }
+.tree-node { user-select: none; }
+.tree-row {
+  display: flex; align-items: center; gap: 2px; padding: 3px 4px;
+  border-radius: 4px; cursor: pointer; white-space: nowrap; color: var(--text);
+}
+.tree-row:hover { background: var(--bg-hover); }
+.tree-row.active { background: var(--accent-dim); color: var(--accent); }
+.tree-toggle { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-muted); flex-shrink: 0; transition: transform 0.15s; }
+.tree-toggle.open { transform: rotate(90deg); }
+.tree-toggle.empty { visibility: hidden; }
+.tree-icon { font-size: 13px; flex-shrink: 0; }
+.tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.tree-children { padding-left: 14px; }
+.tree-children.collapsed { display: none; }
+
+/* ── Move/Copy Picker Modal ────────────────────────────── */
+#modal-picker .modal-box { max-width: 420px; }
+#picker-tree { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px; margin: 8px 0; font-size: 12.5px; }
+#picker-path { font-size: 11.5px; color: var(--text-muted); padding: 4px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Info Modal ────────────────────────────────────────── */
+#modal-info .modal-box { max-width: 380px; }
+.info-row { display: flex; padding: 5px 0; font-size: 12.5px; border-bottom: 1px solid var(--border); }
+.info-row:last-child { border-bottom: none; }
+.info-label { width: 80px; color: var(--text-muted); flex-shrink: 0; }
+.info-value { flex: 1; word-break: break-all; }
+
 /* ── Responsive ────────────────────────────────────────── */
 @media (display-mode: standalone) {
   #toolbar { padding-top: env(safe-area-inset-top); height: calc(var(--toolbar-h) + env(safe-area-inset-top)); }
@@ -377,7 +409,15 @@ body {
     <button class="tb-btn" id="btn-disconnect" title="切断">⏻</button>
   </div>
   <div id="body">
-    <div id="sidebar"><div id="sidebar-header">お気に入り</div><div id="fav-list"></div><div id="sidebar-footer"><button id="btn-add-fav">＋ 現在のフォルダを追加</button></div></div>
+    <div id="sidebar">
+      <div id="sidebar-header">お気に入り</div>
+      <div id="fav-list"></div>
+      <div id="sidebar-footer"><button id="btn-add-fav">＋ 現在のフォルダを追加</button></div>
+      <div id="tree-section">
+        <div id="tree-header">フォルダ</div>
+        <div id="tree-list"></div>
+      </div>
+    </div>
     <div id="main"><div id="loading-overlay"><div class="loading-spinner" style="width:28px;height:28px;border:3px solid var(--border-light);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div></div><div id="grid"></div></div>
   </div>
 </div>
@@ -398,6 +438,19 @@ body {
   <div class="preset-row" id="custom-row" style="display:none"><label>パターン</label><input class="preset-input" id="custom-input" placeholder="{NNN}.{ext}" autocomplete="off"></div>
   <div id="rename-preview"></div>
   <div class="modal-actions"><button class="modal-btn cancel" id="batch-cancel">キャンセル</button><button class="modal-btn primary" id="batch-exec">実行</button></div>
+</div></div>
+
+<div class="modal-overlay" id="modal-picker"><div class="modal-box">
+  <h3 id="picker-title">移動先を選択</h3>
+  <div id="picker-path"></div>
+  <div id="picker-tree"></div>
+  <div class="modal-actions"><button class="modal-btn cancel" id="picker-cancel">キャンセル</button><button class="modal-btn primary" id="picker-ok">決定</button></div>
+</div></div>
+
+<div class="modal-overlay" id="modal-info"><div class="modal-box">
+  <h3>ファイル情報</h3>
+  <div id="info-body"></div>
+  <div class="modal-actions"><button class="modal-btn cancel" id="info-close">閉じる</button></div>
 </div></div>
 
 <div id="toast"></div>
@@ -577,7 +630,7 @@ async function init() {
     App.favorites = s.favorites;
     App.customOrders = s.customOrders || {};
     if (s.sidebarHidden) $('#sidebar').classList.add('hidden'); else $('#sidebar').classList.remove('hidden');
-    renderFavorites();
+    renderFavorites(); loadTree();
     await navigate(pathFromHash() ?? s.lastPath ?? '', true);
   });
   App.storage.on('disconnected', () => { $('#connection-screen').style.display = ''; $('#app').classList.remove('active'); });
@@ -588,7 +641,7 @@ async function init() {
     App.favorites = s.favorites;
     App.customOrders = s.customOrders || {};
     if (s.sidebarHidden) $('#sidebar').classList.add('hidden'); else $('#sidebar').classList.remove('hidden');
-    renderFavorites();
+    renderFavorites(); loadTree();
     navigate(pathFromHash() ?? s.lastPath ?? '', true);
   }
   setupEvents();
@@ -606,7 +659,7 @@ async function navigate(path, replace) {
   saveSetting('lastPath', path);
   replace ? replaceHash(path) : pushHash(path);
   $('#btn-up').classList.toggle('disabled', !path);
-  renderBreadcrumb(); renderFavorites();
+  renderBreadcrumb(); renderFavorites(); updateTreeActive();
   await loadFolder(path);
 }
 
@@ -760,14 +813,28 @@ function showCtx(x, y, entry, multi) {
     const count = App.selected.size;
     h += `<div class="ctx-item" style="color:var(--text-muted);pointer-events:none;font-size:11.5px">${count}件選択中</div><div class="ctx-sep"></div>`;
     h += '<div class="ctx-item" data-action="batch-rename"><span class="ctx-icon">🔢</span>連番リネーム</div>';
+    h += '<div class="ctx-item" data-action="move-multi"><span class="ctx-icon">📦</span>移動</div>';
+    h += '<div class="ctx-item" data-action="copy-multi"><span class="ctx-icon">📋</span>コピー</div>';
+    h += '<div class="ctx-sep"></div>';
     h += '<div class="ctx-item danger" data-action="delete-multi"><span class="ctx-icon">🗑</span>まとめて削除</div>';
   } else {
     if (isF) { h += '<div class="ctx-item" data-action="open"><span class="ctx-icon">📂</span>開く</div><div class="ctx-item" data-action="fav"><span class="ctx-icon">⭐</span>お気に入りに追加</div><div class="ctx-sep"></div>'; }
     else if (IMG_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">🖼</span>画像を開く</div><div class="ctx-sep"></div>'; }
     h += '<div class="ctx-item" data-action="rename"><span class="ctx-icon">✏</span>名前の変更</div>';
+    h += '<div class="ctx-item" data-action="move"><span class="ctx-icon">📦</span>移動</div>';
+    h += '<div class="ctx-item" data-action="copy"><span class="ctx-icon">📋</span>コピー</div>';
+    if (!isF) h += '<div class="ctx-item" data-action="download"><span class="ctx-icon">⬇</span>ダウンロード</div>';
+    h += '<div class="ctx-item" data-action="info"><span class="ctx-icon">ℹ</span>情報</div>';
+    h += '<div class="ctx-sep"></div>';
     h += '<div class="ctx-item danger" data-action="delete"><span class="ctx-icon">🗑</span>削除</div>';
   }
   m.innerHTML = h; m.style.left = Math.min(x, innerWidth - 200) + 'px'; m.style.top = Math.min(y, innerHeight - 200) + 'px'; m.classList.add('show');
+}
+function showCtxEmpty(x, y) {
+  ctxTarget = null; ctxIsMulti = false;
+  const m = $('#ctx-menu');
+  m.innerHTML = '<div class="ctx-item" data-action="new-folder"><span class="ctx-icon">📁</span>新規フォルダ</div>';
+  m.style.left = Math.min(x, innerWidth - 200) + 'px'; m.style.top = Math.min(y, innerHeight - 200) + 'px'; m.classList.add('show');
 }
 function hideCtx() { $('#ctx-menu').classList.remove('show'); ctxTarget = null; ctxIsMulti = false; }
 
@@ -780,6 +847,17 @@ async function doCtx(action) {
   else if (action === 'delete') await deleteEntry(entry);
   else if (action === 'batch-rename') openBatchRename();
   else if (action === 'delete-multi') await deleteMulti();
+  else if (action === 'move') openPicker('move', [entry]);
+  else if (action === 'copy') openPicker('copy', [entry]);
+  else if (action === 'move-multi') openPicker('move', selectedEntries());
+  else if (action === 'copy-multi') openPicker('copy', selectedEntries());
+  else if (action === 'download') await downloadEntry(entry);
+  else if (action === 'info') showInfo(entry);
+  else if (action === 'new-folder') await createNewFolder();
+}
+
+function selectedEntries() {
+  return [...App.selected].sort((a,b) => a - b).map(i => App.entries[i]).filter(Boolean);
 }
 
 // ── Rename (single) ──
@@ -802,6 +880,223 @@ async function deleteMulti() {
   for (const e of sel) { try { await App.storage.delete(entryRelPath(e)); ok++; } catch(_) { fail++; } }
   toast(fail ? `${ok}件削除（${fail}件エラー）` : `${ok}件削除しました`);
   loadFolder(App.currentPath);
+}
+
+// ── New Folder ──
+async function createNewFolder() {
+  const name = prompt('新しいフォルダ名:');
+  if (!name || !name.trim()) return;
+  const rel = App.currentPath ? App.currentPath + '/' + name.trim() : name.trim();
+  try {
+    await App.storage.createFolder(rel);
+    toast('フォルダを作成しました');
+    loadFolder(App.currentPath);
+  } catch(e) { toast('エラー: ' + e.message); }
+}
+
+// ── Dropbox Copy API (not in StorageBridge) ──
+async function dropboxCopy(fromRel, toRel) {
+  const fromPath = fromRel.startsWith('/') ? fromRel : '/' + fromRel;
+  const toPath = toRel.startsWith('/') ? toRel : '/' + toRel;
+  const token = App.storage.getToken();
+  const r = await fetch('https://api.dropboxapi.com/2/files/copy_v2', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from_path: fromPath, to_path: toPath, autorename: true }),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// ── Move/Copy Picker ──
+let pickerMode = ''; // 'move' or 'copy'
+let pickerEntries = []; // entries to move/copy
+let pickerSelected = ''; // selected destination path (relative)
+
+function openPicker(mode, entries) {
+  pickerMode = mode;
+  pickerEntries = entries;
+  pickerSelected = App.currentPath;
+  $('#picker-title').textContent = mode === 'move' ? '移動先を選択' : 'コピー先を選択';
+  $('#picker-path').textContent = '/' + (pickerSelected || '');
+  renderPickerTree();
+  $('#modal-picker').classList.add('show');
+}
+
+async function renderPickerTree() {
+  const container = $('#picker-tree');
+  container.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-muted)">読み込み中...</div>';
+  try {
+    const html = await buildPickerNode('', 'Dropbox', 0, true);
+    container.innerHTML = html;
+    setupPickerEvents(container);
+  } catch(e) {
+    container.innerHTML = '<div style="color:var(--danger);padding:8px">読み込みエラー</div>';
+  }
+}
+
+async function buildPickerNode(path, label, depth, expanded) {
+  let children = '';
+  if (expanded) {
+    try {
+      const entries = await App.storage.list(path || '');
+      const folders = entries.filter(e => e['.tag'] === 'folder').sort((a,b) => naturalCmp(a.name, b.name));
+      children = folders.map(f => {
+        const rel = entryRelPath(f);
+        return `<div class="tree-node" data-path="${rel}">
+          <div class="tree-row${rel === pickerSelected ? ' active' : ''}" data-path="${rel}" style="padding-left:${depth * 14 + 4}px">
+            <span class="tree-toggle">▶</span><span class="tree-icon">📁</span><span class="tree-name">${f.name}</span>
+          </div>
+          <div class="tree-children collapsed"></div>
+        </div>`;
+      }).join('');
+    } catch(_) {}
+  }
+  const active = path === pickerSelected ? ' active' : '';
+  return `<div class="tree-node" data-path="${path}">
+    <div class="tree-row${active}" data-path="${path}" style="padding-left:${Math.max(0, depth - 1) * 14 + 4}px">
+      <span class="tree-toggle${children ? ' open' : ''}">▶</span><span class="tree-icon">📁</span><span class="tree-name">${label}</span>
+    </div>
+    <div class="tree-children${children ? '' : ' collapsed'}">${children}</div>
+  </div>`;
+}
+
+function setupPickerEvents(container) {
+  container.addEventListener('click', async (e) => {
+    const row = e.target.closest('.tree-row');
+    if (!row) return;
+    const path = row.dataset.path;
+
+    // Select
+    container.querySelectorAll('.tree-row.active').forEach(r => r.classList.remove('active'));
+    row.classList.add('active');
+    pickerSelected = path;
+    $('#picker-path').textContent = '/' + (path || '');
+
+    // Toggle expand
+    const toggle = row.querySelector('.tree-toggle');
+    const childrenEl = row.nextElementSibling;
+    if (childrenEl && childrenEl.classList.contains('tree-children')) {
+      if (childrenEl.classList.contains('collapsed')) {
+        // Load children if empty
+        if (!childrenEl.innerHTML.trim()) {
+          childrenEl.innerHTML = '<div style="padding:4px 20px;color:var(--text-muted);font-size:11px">...</div>';
+          try {
+            const entries = await App.storage.list(path || '');
+            const folders = entries.filter(e => e['.tag'] === 'folder').sort((a,b) => naturalCmp(a.name, b.name));
+            const depth = path.split('/').length;
+            childrenEl.innerHTML = folders.map(f => {
+              const rel = entryRelPath(f);
+              return `<div class="tree-node" data-path="${rel}">
+                <div class="tree-row" data-path="${rel}" style="padding-left:${depth * 14 + 4}px">
+                  <span class="tree-toggle">▶</span><span class="tree-icon">📁</span><span class="tree-name">${f.name}</span>
+                </div>
+                <div class="tree-children collapsed"></div>
+              </div>`;
+            }).join('') || '';
+          } catch(_) { childrenEl.innerHTML = ''; }
+        }
+        childrenEl.classList.remove('collapsed');
+        toggle.classList.add('open');
+      } else {
+        childrenEl.classList.add('collapsed');
+        toggle.classList.remove('open');
+      }
+    }
+  });
+}
+
+async function executePicker() {
+  if (!pickerEntries.length) return;
+  const destPath = pickerSelected;
+  $('#modal-picker').classList.remove('show');
+  const label = pickerMode === 'move' ? '移動' : 'コピー';
+  toast(`${label}中...`);
+
+  let ok = 0, fail = 0;
+  for (const entry of pickerEntries) {
+    const fromRel = entryRelPath(entry);
+    const toRel = destPath ? destPath + '/' + entry.name : entry.name;
+    if (fromRel === toRel) continue;
+    try {
+      if (pickerMode === 'move') await App.storage.move(fromRel, toRel);
+      else await dropboxCopy(fromRel, toRel);
+      ok++;
+    } catch(_) { fail++; }
+  }
+  toast(fail ? `${ok}件${label}（${fail}件エラー）` : `${ok}件${label}しました`);
+  loadFolder(App.currentPath);
+}
+
+// ── Download ──
+async function downloadEntry(entry) {
+  toast('ダウンロード中...');
+  try {
+    const rel = entryRelPath(entry);
+    const buf = await App.storage.loadBinary(rel);
+    const blob = new Blob([buf]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = entry.name;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('ダウンロード完了');
+  } catch(e) { toast('ダウンロードエラー: ' + e.message); }
+}
+
+// ── File Info ──
+function showInfo(entry) {
+  const body = $('#info-body');
+  const isF = entry['.tag'] === 'folder';
+  let h = '';
+  h += `<div class="info-row"><div class="info-label">名前</div><div class="info-value">${entry.name}</div></div>`;
+  h += `<div class="info-row"><div class="info-label">パス</div><div class="info-value">${entry.path_display || entryRelPath(entry)}</div></div>`;
+  h += `<div class="info-row"><div class="info-label">種類</div><div class="info-value">${isF ? 'フォルダ' : ext(entry.name).toUpperCase() + ' ファイル'}</div></div>`;
+  if (!isF && entry.size != null) {
+    const bytes = entry.size;
+    const display = bytes < 1024 ? bytes + ' B' : bytes < 1048576 ? (bytes/1024).toFixed(1) + ' KB' : (bytes/1048576).toFixed(1) + ' MB';
+    h += `<div class="info-row"><div class="info-label">サイズ</div><div class="info-value">${display} (${bytes.toLocaleString()} bytes)</div></div>`;
+  }
+  if (entry.client_modified) h += `<div class="info-row"><div class="info-label">更新日</div><div class="info-value">${new Date(entry.client_modified).toLocaleString('ja-JP')}</div></div>`;
+  if (entry.server_modified) h += `<div class="info-row"><div class="info-label">同期日</div><div class="info-value">${new Date(entry.server_modified).toLocaleString('ja-JP')}</div></div>`;
+  body.innerHTML = h;
+  $('#modal-info').classList.add('show');
+}
+
+// ── Sidebar Folder Tree ──
+async function loadTree() {
+  const container = $('#tree-list');
+  container.innerHTML = '';
+  try {
+    const root = document.createElement('div');
+    root.className = 'tree-node';
+    root.dataset.path = '';
+    root.innerHTML = `<div class="tree-row${!App.currentPath ? ' active' : ''}" data-path="">
+      <span class="tree-toggle open">▶</span><span class="tree-icon">📁</span><span class="tree-name">Dropbox</span>
+    </div><div class="tree-children"></div>`;
+    container.appendChild(root);
+
+    const entries = await App.storage.list('');
+    const folders = entries.filter(e => e['.tag'] === 'folder').sort((a,b) => naturalCmp(a.name, b.name));
+    const childrenEl = root.querySelector('.tree-children');
+    childrenEl.innerHTML = folders.map(f => {
+      const rel = entryRelPath(f);
+      const active = App.currentPath === rel ? ' active' : '';
+      return `<div class="tree-node" data-path="${rel}">
+        <div class="tree-row${active}" data-path="${rel}">
+          <span class="tree-toggle">▶</span><span class="tree-icon">📁</span><span class="tree-name">${f.name}</span>
+        </div>
+        <div class="tree-children collapsed"></div>
+      </div>`;
+    }).join('');
+  } catch(_) {}
+}
+
+function updateTreeActive() {
+  document.querySelectorAll('#tree-list .tree-row').forEach(r => {
+    r.classList.toggle('active', r.dataset.path === App.currentPath);
+  });
 }
 
 // ── Batch Rename ──
@@ -1129,6 +1424,60 @@ function setupEvents() {
   $('#prefix-input').oninput = updateRenamePreview;
   $('#custom-input').oninput = updateRenamePreview;
 
+  // Picker modal
+  $('#picker-cancel').onclick = () => $('#modal-picker').classList.remove('show');
+  $('#picker-ok').onclick = executePicker;
+
+  // Info modal
+  $('#info-close').onclick = () => $('#modal-info').classList.remove('show');
+
+  // Empty-space right-click → new folder
+  $('#main').addEventListener('contextmenu', e => {
+    if (e.target.closest('.grid-item')) return; // handled by grid handler
+    e.preventDefault();
+    showCtxEmpty(e.clientX, e.clientY);
+  });
+
+  // Sidebar tree clicks
+  $('#tree-list').addEventListener('click', async (e) => {
+    const row = e.target.closest('.tree-row');
+    if (!row) return;
+    const path = row.dataset.path;
+    const toggle = row.querySelector('.tree-toggle');
+    const childrenEl = row.nextElementSibling;
+
+    // Navigate to folder
+    navigate(path);
+
+    // Expand/collapse
+    if (childrenEl && childrenEl.classList.contains('tree-children')) {
+      if (childrenEl.classList.contains('collapsed')) {
+        if (!childrenEl.innerHTML.trim()) {
+          childrenEl.innerHTML = '<div style="padding:4px 20px;color:var(--text-muted);font-size:11px">...</div>';
+          try {
+            const entries = await App.storage.list(path || '');
+            const folders = entries.filter(e => e['.tag'] === 'folder').sort((a,b) => naturalCmp(a.name, b.name));
+            const depth = path ? path.split('/').length : 0;
+            childrenEl.innerHTML = folders.map(f => {
+              const rel = entryRelPath(f);
+              return `<div class="tree-node" data-path="${rel}">
+                <div class="tree-row" data-path="${rel}" style="padding-left:${depth * 14 + 4}px">
+                  <span class="tree-toggle">▶</span><span class="tree-icon">📁</span><span class="tree-name">${f.name}</span>
+                </div>
+                <div class="tree-children collapsed"></div>
+              </div>`;
+            }).join('') || '';
+          } catch(_) { childrenEl.innerHTML = ''; }
+        }
+        childrenEl.classList.remove('collapsed');
+        if (toggle) toggle.classList.add('open');
+      } else {
+        childrenEl.classList.add('collapsed');
+        if (toggle) toggle.classList.remove('open');
+      }
+    }
+  });
+
   // Viewer
   $('#viewer-close').onclick = () => { closeViewer(); history.back(); };
   $('#tap-left').onclick = vPrev; $('#tap-right').onclick = vNext; $('#tap-center').onclick = showViewerBar;
@@ -1153,7 +1502,7 @@ function setupEvents() {
   $('#viewer').addEventListener('wheel', e => { if (!App.viewerVisible||wCD) return; e.preventDefault(); wCD=true; setTimeout(()=>wCD=false,200); e.deltaY>0 ? vNext() : vPrev(); }, { passive: false });
 
   // Popstate
-  window.addEventListener('popstate', () => { if (App.viewerVisible) { closeViewer(); return; } const p = pathFromHash() ?? ''; if (p !== App.currentPath) { App.currentPath = p; saveSetting('lastPath',p); $('#btn-up').classList.toggle('disabled',!p); renderBreadcrumb(); renderFavorites(); loadFolder(p); } });
+  window.addEventListener('popstate', () => { if (App.viewerVisible) { closeViewer(); return; } const p = pathFromHash() ?? ''; if (p !== App.currentPath) { App.currentPath = p; saveSetting('lastPath',p); $('#btn-up').classList.toggle('disabled',!p); renderBreadcrumb(); renderFavorites(); updateTreeActive(); loadFolder(p); } });
 
   // D&D (one-time)
   initDragReorder();
