@@ -986,25 +986,47 @@ async function undoLast() {
   if (!App.undoStack.length) return;
   const op = App.undoStack.pop();
   updateUndoBtn();
-  toast(`元に戻しています: ${op.label}...`);
+
+  // Block UI for multi-file operations
+  let blocker = null;
+  if (op.ops.length > 1) {
+    blocker = document.createElement('div');
+    blocker.style.cssText = 'position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-family:inherit';
+    blocker.innerHTML = '<div style="background:var(--bg-raised);padding:16px 28px;border-radius:8px;border:1px solid var(--border)"><span id="undo-progress">元に戻しています... 0/' + op.ops.length + '</span></div>';
+    document.body.appendChild(blocker);
+  } else {
+    toast(`元に戻しています: ${op.label}...`);
+  }
+  const blockRefresh = e => { e.preventDefault(); e.returnValue = ''; };
+  const blockKey = e => { if (e.key === 'F5' || (e.key === 'r' && (e.ctrlKey||e.metaKey))) { e.preventDefault(); e.stopPropagation(); } };
+  window.addEventListener('beforeunload', blockRefresh);
+  document.addEventListener('keydown', blockKey, true);
+
   let fail = 0;
   if (op.type === 'rename-batch') {
-    // 2-pass reverse
+    // Per-file atomic: current → tmp → original
     for (let i = 0; i < op.ops.length; i++) {
-      const par = parentPath(op.ops[i].from);
-      const tmp = (par ? par + '/' : '') + '__undo_' + i + '_' + baseName(op.ops[i].to);
-      try { await App.storage.move(op.ops[i].from, tmp); op.ops[i]._tmp = tmp; } catch(_) { fail++; op.ops[i]._tmp = null; }
-    }
-    for (let i = 0; i < op.ops.length; i++) {
-      if (!op.ops[i]._tmp) continue;
-      try { await App.storage.move(op.ops[i]._tmp, op.ops[i].to); } catch(_) { fail++; }
+      if (blocker) blocker.querySelector('#undo-progress').textContent = `元に戻しています... ${i+1}/${op.ops.length}`;
+      const mv = op.ops[i];
+      const par = parentPath(mv.from);
+      const tmp = (par ? par + '/' : '') + '__undo_' + Date.now() + '_' + i + '_' + baseName(mv.to);
+      try {
+        await App.storage.move(mv.from, tmp);
+        try { await App.storage.move(tmp, mv.to); }
+        catch(_) { try { await App.storage.move(tmp, mv.from); } catch(_2) {} fail++; }
+      } catch(_) { fail++; }
     }
   } else {
-    // move / delete (trash) / rename-single: just reverse each op
-    for (const mv of op.ops) {
-      try { await App.storage.move(mv.from, mv.to); } catch(_) { fail++; }
+    for (let i = 0; i < op.ops.length; i++) {
+      if (blocker) blocker.querySelector('#undo-progress').textContent = `元に戻しています... ${i+1}/${op.ops.length}`;
+      try { await App.storage.move(op.ops[i].from, op.ops[i].to); } catch(_) { fail++; }
     }
   }
+
+  window.removeEventListener('beforeunload', blockRefresh);
+  document.removeEventListener('keydown', blockKey, true);
+  if (blocker) blocker.remove();
+
   toast(fail ? `元に戻す完了（${fail}件エラー）` : '元に戻しました');
   loadFolder(App.currentPath); loadTree();
 }
@@ -1298,21 +1320,54 @@ async function executeBatchRename() {
   const renames = files.map((f,i) => ({ entry: f, newName: names[i] })).filter(r => r.entry.name !== r.newName);
   if (!renames.length) { toast('変更なし'); return; }
   if (!confirm(`${renames.length}件リネームしますか？`)) return;
-  $('#modal-batch-rename').classList.remove('show'); toast('リネーム中...');
-  const undo = []; let fail = 0;
-  // Pass 1: to temp
+  $('#modal-batch-rename').classList.remove('show');
+
+  // Block UI during rename
+  const blocker = document.createElement('div');
+  blocker.style.cssText = 'position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-family:inherit';
+  blocker.innerHTML = '<div style="background:var(--bg-raised);padding:16px 28px;border-radius:8px;border:1px solid var(--border)"><span id="rename-progress">リネーム中... 0/' + renames.length + '</span></div>';
+  document.body.appendChild(blocker);
+  const progressEl = blocker.querySelector('#rename-progress');
+
+  // Block F5 / beforeunload
+  const blockRefresh = e => { e.preventDefault(); e.returnValue = ''; };
+  window.addEventListener('beforeunload', blockRefresh);
+  const blockKey = e => { if ((e.key === 'F5') || (e.key === 'r' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); e.stopPropagation(); } };
+  document.addEventListener('keydown', blockKey, true);
+
+  const undoOps = [];
+  let fail = 0;
+
+  // Per-file atomic: old → tmp → final (each file completes before next)
   for (let i = 0; i < renames.length; i++) {
-    const r = renames[i], rel = entryRelPath(r.entry), par = parentPath(rel);
-    const tmp = (par ? par + '/' : '') + '__tmp_' + i + '_' + r.newName;
-    try { await App.storage.move(rel, tmp); r._tmp = tmp; undo.push({ from: null, origRel: rel }); } catch(_) { fail++; r._tmp = null; }
+    const r = renames[i];
+    const rel = entryRelPath(r.entry);
+    const par = parentPath(rel);
+    const tmp = (par ? par + '/' : '') + '__ren_' + Date.now() + '_' + i + '_' + r.newName;
+    const fin = (par ? par + '/' : '') + r.newName;
+    progressEl.textContent = `リネーム中... ${i + 1}/${renames.length}`;
+    try {
+      // Step 1: old → tmp
+      await App.storage.move(rel, tmp);
+      // Step 2: tmp → final (if this fails, try to revert tmp → old)
+      try {
+        await App.storage.move(tmp, fin);
+        undoOps.push({ from: fin, to: rel });
+      } catch(e2) {
+        // Revert: tmp → old
+        try { await App.storage.move(tmp, rel); } catch(_) {}
+        fail++;
+      }
+    } catch(e1) {
+      fail++;
+    }
   }
-  // Pass 2: to final
-  for (let i = 0; i < renames.length; i++) {
-    if (!renames[i]._tmp) continue;
-    const par = parentPath(renames[i]._tmp), fin = (par ? par + '/' : '') + renames[i].newName;
-    try { await App.storage.move(renames[i]._tmp, fin); undo[i].from = fin; } catch(_) { fail++; }
-  }
-  const undoOps = undo.filter(u => u.from).map(u => ({ from: u.from, to: u.origRel }));
+
+  // Unblock
+  window.removeEventListener('beforeunload', blockRefresh);
+  document.removeEventListener('keydown', blockKey, true);
+  blocker.remove();
+
   if (undoOps.length) pushUndo({ type: 'rename-batch', label: `${undoOps.length}件リネーム`, ops: undoOps });
   toast(fail ? `完了（${fail}件エラー）` : `${renames.length}件リネーム完了`);
   loadFolder(App.currentPath);
