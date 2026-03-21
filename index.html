@@ -103,7 +103,7 @@ body {
   background: var(--bg); color: var(--text);
   font-size: 13px; line-height: 1.5;
   -webkit-tap-highlight-color: transparent; user-select: none;
-  touch-action: manipulation;
+  touch-action: manipulation; -webkit-touch-callout: none;
 }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -242,7 +242,8 @@ body {
   display: flex; align-items: center; justify-content: center;
   border-radius: 4px; overflow: hidden; background: var(--bg); position: relative;
 }
-.grid-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.grid-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; -webkit-touch-callout: none; pointer-events: none; }
+.grid-item[draggable] { -webkit-touch-callout: none; }
 .folder-preview {
   display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
   width: 100%; height: 100%; gap: 1px; background: var(--border);
@@ -526,18 +527,18 @@ const THUMB_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','p
 const IMG_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','svg']);
 
 // ── Natural Sort ──
+// Use Intl.Collator with numeric:true for robust natural sorting
+// Handles: 1 < 2 < 10, "18b" < "19", "file" < "file(2)", etc.
+const _natCollator = new Intl.Collator('ja', { numeric: true, sensitivity: 'base' });
 function naturalCmp(a, b) {
-  const an = natChunks(a), bn = natChunks(b);
-  for (let i = 0, len = Math.min(an.length, bn.length); i < len; i++) {
-    const ac = an[i], bc = bn[i];
-    if (ac.n !== null && bc.n !== null) { if (ac.n !== bc.n) return ac.n - bc.n; }
-    else if (ac.n !== null) return -1;
-    else if (bc.n !== null) return 1;
-    else { const c = ac.s.localeCompare(bc.s, 'ja', { sensitivity: 'base' }); if (c) return c; }
-  }
-  return an.length - bn.length;
+  // Strip extension for comparison, compare by stem first, then extension
+  const aExt = a.lastIndexOf('.') > 0 ? a.slice(a.lastIndexOf('.')) : '';
+  const bExt = b.lastIndexOf('.') > 0 ? b.slice(b.lastIndexOf('.')) : '';
+  const aStem = aExt ? a.slice(0, -aExt.length) : a;
+  const bStem = bExt ? b.slice(0, -bExt.length) : b;
+  const c = _natCollator.compare(aStem, bStem);
+  return c !== 0 ? c : _natCollator.compare(aExt, bExt);
 }
-function natChunks(s) { const r = [], re = /(\d+)|(\D+)/g; let m; while ((m = re.exec(s))) r.push(m[1] !== undefined ? { n: parseInt(m[1]), s: m[1] } : { n: null, s: m[2] }); return r; }
 
 // ── IndexedDB ──
 const IDB = {
@@ -1322,54 +1323,71 @@ async function executeBatchRename() {
   if (!confirm(`${renames.length}件リネームしますか？`)) return;
   $('#modal-batch-rename').classList.remove('show');
 
-  // Block UI during rename
+  // Build set of target names for collision detection
+  const allCurrentNames = new Set(App.entries.map(e => e.name));
+  const targetNames = new Set(renames.map(r => r.newName));
+
+  // Block UI
+  let cancelled = false;
   const blocker = document.createElement('div');
-  blocker.style.cssText = 'position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-family:inherit';
-  blocker.innerHTML = '<div style="background:var(--bg-raised);padding:16px 28px;border-radius:8px;border:1px solid var(--border)"><span id="rename-progress">リネーム中... 0/' + renames.length + '</span></div>';
+  blocker.style.cssText = 'position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.5);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:inherit';
+  blocker.innerHTML = `<div style="background:var(--bg-raised);padding:16px 28px;border-radius:8px;border:1px solid var(--border);text-align:center">
+    <div id="rename-progress" style="font-size:14px;color:var(--text);margin-bottom:10px">リネーム中... 0/${renames.length}</div>
+    <button id="rename-abort" style="padding:5px 16px;border:1px solid var(--danger);border-radius:6px;background:transparent;color:var(--danger);cursor:pointer;font-family:inherit;font-size:12px">中止</button>
+  </div>`;
   document.body.appendChild(blocker);
+  blocker.querySelector('#rename-abort').onclick = () => { cancelled = true; };
   const progressEl = blocker.querySelector('#rename-progress');
 
-  // Block F5 / beforeunload
   const blockRefresh = e => { e.preventDefault(); e.returnValue = ''; };
   window.addEventListener('beforeunload', blockRefresh);
-  const blockKey = e => { if ((e.key === 'F5') || (e.key === 'r' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); e.stopPropagation(); } };
+  const blockKey = e => { if (e.key === 'F5' || (e.key === 'r' && (e.ctrlKey||e.metaKey))) { e.preventDefault(); e.stopPropagation(); } };
   document.addEventListener('keydown', blockKey, true);
 
   const undoOps = [];
-  let fail = 0;
+  let done = 0, fail = 0;
 
-  // Per-file atomic: old → tmp → final (each file completes before next)
-  for (let i = 0; i < renames.length; i++) {
-    const r = renames[i];
-    const rel = entryRelPath(r.entry);
-    const par = parentPath(rel);
-    const tmp = (par ? par + '/' : '') + '__ren_' + Date.now() + '_' + i + '_' + r.newName;
-    const fin = (par ? par + '/' : '') + r.newName;
-    progressEl.textContent = `リネーム中... ${i + 1}/${renames.length}`;
-    try {
-      // Step 1: old → tmp
-      await App.storage.move(rel, tmp);
-      // Step 2: tmp → final (if this fails, try to revert tmp → old)
+  // Parallel rename with concurrency limit
+  const CONCURRENCY = 3;
+  let next = 0;
+
+  async function renameOne() {
+    while (next < renames.length && !cancelled) {
+      const i = next++;
+      const r = renames[i];
+      const rel = entryRelPath(r.entry);
+      const par = parentPath(rel);
+      const fin = (par ? par + '/' : '') + r.newName;
+
+      // Check if direct rename is safe (new name doesn't collide with an existing non-renamed file)
+      const needsTmp = allCurrentNames.has(r.newName) && !targetNames.has(r.entry.name);
+
       try {
-        await App.storage.move(tmp, fin);
-        undoOps.push({ from: fin, to: rel });
-      } catch(e2) {
-        // Revert: tmp → old
-        try { await App.storage.move(tmp, rel); } catch(_) {}
-        fail++;
-      }
-    } catch(e1) {
-      fail++;
+        if (needsTmp) {
+          const tmp = (par ? par + '/' : '') + '__ren_' + Date.now() + '_' + i;
+          await App.storage.move(rel, tmp);
+          try { await App.storage.move(tmp, fin); undoOps.push({ from: fin, to: rel }); }
+          catch(_) { try { await App.storage.move(tmp, rel); } catch(_2) {} fail++; }
+        } else {
+          await App.storage.move(rel, fin);
+          undoOps.push({ from: fin, to: rel });
+        }
+      } catch(_) { fail++; }
+
+      done++;
+      progressEl.textContent = cancelled ? `中止中... ${done}/${renames.length}` : `リネーム中... ${done}/${renames.length}`;
     }
   }
 
-  // Unblock
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => renameOne()));
+
   window.removeEventListener('beforeunload', blockRefresh);
   document.removeEventListener('keydown', blockKey, true);
   blocker.remove();
 
   if (undoOps.length) pushUndo({ type: 'rename-batch', label: `${undoOps.length}件リネーム`, ops: undoOps });
-  toast(fail ? `完了（${fail}件エラー）` : `${renames.length}件リネーム完了`);
+  if (cancelled) toast(`中止しました（${done}件処理済み）`);
+  else toast(fail ? `完了（${fail}件エラー）` : `${renames.length}件リネーム完了`);
   loadFolder(App.currentPath);
 }
 // (undo functions moved to Undo Stack section above)
