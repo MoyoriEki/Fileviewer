@@ -1318,14 +1318,10 @@ async function executeBatchRename() {
     case 'nnn': return pad(n,3)+(e?'.'+e:''); case 'nn': return pad(n,2)+(e?'.'+e:'');
     case 'prefix_nnn': return (prefix||'file')+'_'+pad(n,3)+(e?'.'+e:'');
     case 'custom': return applyCust(custom,n,e,f.name); default: return f.name; }});
-  const renames = files.map((f,i) => ({ entry: f, newName: names[i] })).filter(r => r.entry.name !== r.newName);
+  const renames = files.map((f,i) => ({ entry: f, newName: names[i], done: false })).filter(r => r.entry.name !== r.newName);
   if (!renames.length) { toast('変更なし'); return; }
   if (!confirm(`${renames.length}件リネームしますか？`)) return;
   $('#modal-batch-rename').classList.remove('show');
-
-  // Build set of target names for collision detection
-  const allCurrentNames = new Set(App.entries.map(e => e.name));
-  const targetNames = new Set(renames.map(r => r.newName));
 
   // Block UI
   let cancelled = false;
@@ -1338,7 +1334,6 @@ async function executeBatchRename() {
   document.body.appendChild(blocker);
   blocker.querySelector('#rename-abort').onclick = () => { cancelled = true; };
   const progressEl = blocker.querySelector('#rename-progress');
-
   const blockRefresh = e => { e.preventDefault(); e.returnValue = ''; };
   window.addEventListener('beforeunload', blockRefresh);
   const blockKey = e => { if (e.key === 'F5' || (e.key === 'r' && (e.ctrlKey||e.metaKey))) { e.preventDefault(); e.stopPropagation(); } };
@@ -1347,39 +1342,77 @@ async function executeBatchRename() {
   const undoOps = [];
   let done = 0, fail = 0;
 
-  // Parallel rename with concurrency limit
-  const CONCURRENCY = 3;
-  let next = 0;
+  // Track which names currently exist on disk
+  const occupied = new Set(App.entries.map(e => e.name));
 
-  async function renameOne() {
-    while (next < renames.length && !cancelled) {
-      const i = next++;
-      const r = renames[i];
+  // Sequential smart-order: process renames whose target is free first
+  const pending = [...renames];
+  let progress = true;
+  while (pending.some(r => !r.done) && progress && !cancelled) {
+    progress = false;
+    for (const r of pending) {
+      if (r.done || cancelled) continue;
       const rel = entryRelPath(r.entry);
       const par = parentPath(rel);
       const fin = (par ? par + '/' : '') + r.newName;
 
-      // Check if direct rename is safe (new name doesn't collide with an existing non-renamed file)
-      const needsTmp = allCurrentNames.has(r.newName) && !targetNames.has(r.entry.name);
-
-      try {
-        if (needsTmp) {
-          const tmp = (par ? par + '/' : '') + '__ren_' + Date.now() + '_' + i;
-          await App.storage.move(rel, tmp);
-          try { await App.storage.move(tmp, fin); undoOps.push({ from: fin, to: rel }); }
-          catch(_) { try { await App.storage.move(tmp, rel); } catch(_2) {} fail++; }
-        } else {
+      if (!occupied.has(r.newName) || r.newName === r.entry.name) {
+        // Target is free → direct rename
+        try {
           await App.storage.move(rel, fin);
           undoOps.push({ from: fin, to: rel });
-        }
-      } catch(_) { fail++; }
-
-      done++;
-      progressEl.textContent = cancelled ? `中止中... ${done}/${renames.length}` : `リネーム中... ${done}/${renames.length}`;
+          occupied.delete(r.entry.name);
+          occupied.add(r.newName);
+        } catch(_) { fail++; }
+        r.done = true; done++; progress = true;
+        progressEl.textContent = cancelled ? `中止中... ${done}/${renames.length}` : `リネーム中... ${done}/${renames.length}`;
+      }
     }
   }
 
-  await Promise.all(Array.from({ length: CONCURRENCY }, () => renameOne()));
+  // Handle remaining (cycles) — break each cycle with one tmp
+  for (const r of pending) {
+    if (r.done || cancelled) continue;
+    const rel = entryRelPath(r.entry);
+    const par = parentPath(rel);
+    const fin = (par ? par + '/' : '') + r.newName;
+    const tmp = (par ? par + '/' : '') + '__ren_' + Date.now() + '_' + r.newName;
+    try {
+      await App.storage.move(rel, tmp);
+      occupied.delete(r.entry.name);
+      // Now try to resolve the chain freed up by removing this name
+      let chainProgress = true;
+      while (chainProgress && !cancelled) {
+        chainProgress = false;
+        for (const r2 of pending) {
+          if (r2.done || r2 === r) continue;
+          if (!occupied.has(r2.newName)) {
+            const rel2 = entryRelPath(r2.entry);
+            const par2 = parentPath(rel2);
+            const fin2 = (par2 ? par2 + '/' : '') + r2.newName;
+            try {
+              await App.storage.move(rel2, fin2);
+              undoOps.push({ from: fin2, to: rel2 });
+              occupied.delete(r2.entry.name);
+              occupied.add(r2.newName);
+            } catch(_) { fail++; }
+            r2.done = true; done++; chainProgress = true;
+            progressEl.textContent = `リネーム中... ${done}/${renames.length}`;
+          }
+        }
+      }
+      // Now rename tmp → final (should be free now)
+      try {
+        await App.storage.move(tmp, fin);
+        undoOps.push({ from: fin, to: rel });
+        occupied.add(r.newName);
+      } catch(_) {
+        try { await App.storage.move(tmp, rel); occupied.add(r.entry.name); } catch(_2) {} fail++;
+      }
+    } catch(_) { fail++; }
+    r.done = true; done++;
+    progressEl.textContent = `リネーム中... ${done}/${renames.length}`;
+  }
 
   window.removeEventListener('beforeunload', blockRefresh);
   document.removeEventListener('keydown', blockKey, true);
