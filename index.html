@@ -304,6 +304,19 @@ body {
 #viewer-slider { flex: 1; height: 3px; accent-color: var(--accent); cursor: pointer; }
 #viewer-page-label { font-size: 12px; color: rgba(255,255,255,0.7); min-width: 60px; text-align: right; }
 
+/* ── Video/Audio/Text/PDF Viewer ──────────────────────── */
+#viewer-video { max-width: 100%; max-height: 100%; outline: none; }
+#viewer-audio-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 40px; }
+#viewer-audio-icon { font-size: 80px; opacity: 0.7; }
+#viewer-audio-name { font-size: 15px; color: #fff; text-align: center; word-break: break-all; max-width: 80%; }
+#viewer-audio { width: min(400px, 80vw); }
+#viewer-text-wrap { flex: 1; overflow: auto; padding: 20px; display: flex; justify-content: center; }
+#viewer-text { width: 100%; max-width: 900px; font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace; font-size: 13px; line-height: 1.6; color: #e0e0e0; white-space: pre-wrap; word-wrap: break-word; tab-size: 4; user-select: text; }
+#viewer-pdf-wrap { flex: 1; overflow: hidden; }
+#viewer-pdf { width: 100%; height: 100%; border: none; }
+[data-theme="light"] #viewer-text { color: #1d1d1f; }
+[data-theme="light"] #viewer-audio-name { color: #1d1d1f; }
+
 /* ── Modals ────────────────────────────────────────────── */
 .modal-overlay { display: none; position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
 .modal-overlay.show { display: flex; }
@@ -462,6 +475,10 @@ body {
 <div id="viewer">
   <div id="viewer-topbar"><span id="viewer-title"></span><button class="viewer-btn" id="viewer-close" title="閉じる">✕</button></div>
   <div id="viewer-img-wrap"><div class="tap-zone left" id="tap-left"></div><div class="tap-zone center" id="tap-center"></div><div class="tap-zone right" id="tap-right"></div><img id="viewer-img" src="" alt=""></div>
+  <div id="viewer-video-wrap" style="display:none;flex:1;align-items:center;justify-content:center;overflow:hidden"><video id="viewer-video" controls></video></div>
+  <div id="viewer-audio-wrap" style="display:none"><span id="viewer-audio-icon">🎵</span><span id="viewer-audio-name"></span><audio id="viewer-audio" controls></audio></div>
+  <div id="viewer-text-wrap" style="display:none"><pre id="viewer-text"></pre></div>
+  <div id="viewer-pdf-wrap" style="display:none"><iframe id="viewer-pdf"></iframe></div>
   <div id="viewer-bottombar"><input type="range" id="viewer-slider" min="0" max="0" value="0"><span id="viewer-page-label"></span></div>
 </div>
 <div id="ctx-menu"></div>
@@ -525,6 +542,52 @@ const App = {
 
 const THUMB_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','ppm']);
 const IMG_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','svg']);
+const VIDEO_EXT = new Set(['mp4','webm','ogv','mov','m4v']);
+const AUDIO_EXT = new Set(['mp3','wav','ogg','flac','aac','m4a','opus','weba']);
+const TEXT_EXT = new Set(['txt','md','markdown','json','js','mjs','ts','tsx','jsx','py','html','htm','css','scss','less','xml','csv','log','yaml','yml','toml','ini','cfg','sh','bash','zsh','bat','rb','go','rs','java','c','cpp','h','hpp','php','sql','swift','kt','r','lua','pl','ex','exs','hs','elm','vue','svelte','diff','patch','env','gitignore','dockerfile','makefile']);
+const PDF_EXT = new Set(['pdf']);
+const VIEWABLE_EXT = new Set([...IMG_EXT, ...VIDEO_EXT, ...AUDIO_EXT, ...TEXT_EXT, ...PDF_EXT]);
+function fileMime(name) {
+  const e = ext(name);
+  if (e === 'svg') return 'image/svg+xml';
+  if (e === 'jpg' || e === 'jpeg') return 'image/jpeg';
+  if (IMG_EXT.has(e)) return 'image/' + e;
+  if (e === 'mp4' || e === 'm4v') return 'video/mp4';
+  if (e === 'webm') return 'video/webm';
+  if (e === 'ogv') return 'video/ogg';
+  if (e === 'mov') return 'video/quicktime';
+  if (e === 'mp3') return 'audio/mpeg';
+  if (e === 'wav') return 'audio/wav';
+  if (e === 'ogg' || e === 'opus') return 'audio/' + e;
+  if (e === 'flac') return 'audio/flac';
+  if (e === 'aac') return 'audio/aac';
+  if (e === 'm4a') return 'audio/mp4';
+  if (e === 'weba') return 'audio/webm';
+  if (e === 'pdf') return 'application/pdf';
+  if (e === 'json') return 'application/json';
+  if (e === 'xml') return 'application/xml';
+  if (e === 'html' || e === 'htm') return 'text/html';
+  if (e === 'css' || e === 'scss' || e === 'less') return 'text/css';
+  if (e === 'js' || e === 'mjs') return 'text/javascript';
+  return 'text/plain';
+}
+function fileCategory(name) {
+  const e = ext(name);
+  if (IMG_EXT.has(e)) return 'image';
+  if (VIDEO_EXT.has(e)) return 'video';
+  if (AUDIO_EXT.has(e)) return 'audio';
+  if (TEXT_EXT.has(e)) return 'text';
+  if (PDF_EXT.has(e)) return 'pdf';
+  return null;
+}
+function fileIcon(name) {
+  const cat = fileCategory(name);
+  if (cat === 'video') return '🎬';
+  if (cat === 'audio') return '🎵';
+  if (cat === 'text') return '📝';
+  if (cat === 'pdf') return '📕';
+  return '📄';
+}
 
 // ── Natural Sort ──
 // Use Intl.Collator with numeric:true for robust natural sorting
@@ -761,7 +824,7 @@ function renderGrid(gen) {
     const draggable = ' draggable="true"';
     return `<div class="grid-item${sel ? ' selected' : ''}" data-index="${idx}" data-tag="${entry['.tag']}"${draggable}>
       <div class="grid-check" data-check="${idx}">${sel ? '✓' : ''}</div>
-      <div class="grid-thumb" id="thumb-${idx}">${isF ? '<span class="folder-icon">📁</span>' : (THUMB_EXT.has(e) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">📄</span>')}</div>
+      <div class="grid-thumb" id="thumb-${idx}">${isF ? '<span class="folder-icon">📁</span>' : (THUMB_EXT.has(e) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">' + fileIcon(entry.name) + '</span>')}</div>
       <div class="grid-name" title="${entry.name}">${entry.name}</div></div>`;
   }).join('');
   setupObserver(gen); loadFolderPreviews(gen);
@@ -873,6 +936,10 @@ function showCtx(x, y, entry, multi) {
   } else {
     if (isF) { h += '<div class="ctx-item" data-action="open"><span class="ctx-icon">📂</span>開く</div><div class="ctx-item" data-action="fav"><span class="ctx-icon">⭐</span>お気に入りに追加</div><div class="ctx-sep"></div>'; }
     else if (IMG_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">🖼</span>画像を開く</div><div class="ctx-sep"></div>'; }
+    else if (VIDEO_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">🎬</span>動画を開く</div><div class="ctx-sep"></div>'; }
+    else if (AUDIO_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">🎵</span>音声を開く</div><div class="ctx-sep"></div>'; }
+    else if (TEXT_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">📝</span>テキストを開く</div><div class="ctx-sep"></div>'; }
+    else if (PDF_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">📕</span>PDFを開く</div><div class="ctx-sep"></div>'; }
     h += '<div class="ctx-item" data-action="rename"><span class="ctx-icon">✏</span>名前の変更</div>';
     h += '<div class="ctx-item" data-action="move"><span class="ctx-icon">📦</span>移動</div>';
     h += '<div class="ctx-item" data-action="copy"><span class="ctx-icon">📋</span>コピー</div>';
@@ -1684,27 +1751,80 @@ function applyCustomOrder(entries) {
   return ordered;
 }
 
-// ── Image Viewer ──
+// ── File Viewer (Image / Video / Audio / Text / PDF) ──
+function hideAllViewerPanes() {
+  $('#viewer-img-wrap').style.display = '';
+  $('#viewer-img').removeAttribute('src'); $('#viewer-img').classList.add('loading');
+  $('#viewer-video-wrap').style.display = 'none';
+  const vid = $('#viewer-video'); vid.pause(); vid.removeAttribute('src'); vid.load();
+  $('#viewer-audio-wrap').style.display = 'none';
+  const aud = $('#viewer-audio'); aud.pause(); aud.removeAttribute('src'); aud.load();
+  $('#viewer-text-wrap').style.display = 'none';
+  $('#viewer-text').textContent = '';
+  $('#viewer-pdf-wrap').style.display = 'none';
+  $('#viewer-pdf').removeAttribute('src');
+}
 function openViewer(entry) {
-  App.viewerImages = App.entries.filter(e => e['.tag'] === 'file' && IMG_EXT.has(ext(e.name)));
+  App.viewerImages = App.entries.filter(e => e['.tag'] === 'file' && VIEWABLE_EXT.has(ext(e.name)));
   const idx = App.viewerImages.indexOf(entry); if (idx === -1) return;
   App.viewerIndex = idx; App.viewerVisible = true;
-  const img = $('#viewer-img'); img.removeAttribute('src'); img.classList.add('loading');
+  hideAllViewerPanes();
   $('#viewer').classList.add('active'); showViewerBar(); loadViewerPage(idx); updateVSlider();
   history.pushState({ viewer: true }, '', location.hash);
 }
-function closeViewer() { if (!App.viewerVisible) return; App.viewerVisible = false; $('#viewer').classList.remove('active'); $('#viewer-img').removeAttribute('src'); for (const u of Object.values(App.prefetchCache)) URL.revokeObjectURL(u); App.prefetchCache = {}; }
+function closeViewer() {
+  if (!App.viewerVisible) return; App.viewerVisible = false;
+  $('#viewer').classList.remove('active');
+  hideAllViewerPanes();
+  for (const u of Object.values(App.prefetchCache)) URL.revokeObjectURL(u);
+  App.prefetchCache = {};
+}
 let vGen = 0;
 async function loadViewerPage(idx) {
   if (idx < 0 || idx >= App.viewerImages.length) return;
-  App.viewerIndex = idx; const entry = App.viewerImages[idx], rel = entryRelPath(entry), img = $('#viewer-img'), g = ++vGen;
-  $('#viewer-title').textContent = entry.name; updateVSlider(); img.removeAttribute('src'); img.classList.add('loading');
-  try { let u = App.prefetchCache[rel]; if (!u) { const buf = await App.storage.loadBinary(rel); if (g !== vGen) return; const e = ext(entry.name), mime = e === 'svg' ? 'image/svg+xml' : 'image/'+(e==='jpg'?'jpeg':e); u = URL.createObjectURL(new Blob([buf], { type: mime })); }
-    if (g !== vGen) return; img.src = u; img.onload = () => { if (g === vGen) img.classList.remove('loading'); };
-  } catch(_) { if (g === vGen) img.classList.remove('loading'); }
-  prefetchV(idx);
+  App.viewerIndex = idx;
+  const entry = App.viewerImages[idx], rel = entryRelPath(entry), g = ++vGen;
+  const cat = fileCategory(entry.name), mime = fileMime(entry.name);
+  $('#viewer-title').textContent = entry.name; updateVSlider();
+  hideAllViewerPanes();
+
+  try {
+    if (cat === 'image') {
+      $('#viewer-img-wrap').style.display = '';
+      const img = $('#viewer-img');
+      let u = App.prefetchCache[rel];
+      if (!u) { const buf = await App.storage.loadBinary(rel); if (g !== vGen) return; u = URL.createObjectURL(new Blob([buf], { type: mime })); }
+      if (g !== vGen) return; img.src = u; img.onload = () => { if (g === vGen) img.classList.remove('loading'); };
+      prefetchV(idx);
+    } else if (cat === 'video') {
+      $('#viewer-img-wrap').style.display = 'none';
+      $('#viewer-video-wrap').style.display = 'flex';
+      const buf = await App.storage.loadBinary(rel); if (g !== vGen) return;
+      const u = URL.createObjectURL(new Blob([buf], { type: mime }));
+      const vid = $('#viewer-video'); vid.src = u; vid.load();
+    } else if (cat === 'audio') {
+      $('#viewer-img-wrap').style.display = 'none';
+      $('#viewer-audio-wrap').style.display = 'flex';
+      $('#viewer-audio-name').textContent = entry.name;
+      const buf = await App.storage.loadBinary(rel); if (g !== vGen) return;
+      const u = URL.createObjectURL(new Blob([buf], { type: mime }));
+      const aud = $('#viewer-audio'); aud.src = u; aud.load();
+    } else if (cat === 'text') {
+      $('#viewer-img-wrap').style.display = 'none';
+      $('#viewer-text-wrap').style.display = 'flex';
+      const buf = await App.storage.loadBinary(rel); if (g !== vGen) return;
+      const text = new TextDecoder('utf-8').decode(buf);
+      $('#viewer-text').textContent = text;
+    } else if (cat === 'pdf') {
+      $('#viewer-img-wrap').style.display = 'none';
+      $('#viewer-pdf-wrap').style.display = 'flex';
+      const buf = await App.storage.loadBinary(rel); if (g !== vGen) return;
+      const u = URL.createObjectURL(new Blob([buf], { type: mime }));
+      $('#viewer-pdf').src = u;
+    }
+  } catch(_) { /* loading failed */ }
 }
-async function prefetchV(cur) { for (const off of [1,-1,2,-2,3,-3]) { const i = cur+off; if (i<0||i>=App.viewerImages.length) continue; const rel = entryRelPath(App.viewerImages[i]); if (App.prefetchCache[rel]) continue; try { const buf = await App.storage.loadBinary(rel); const e = ext(App.viewerImages[i].name), mime = e==='svg'?'image/svg+xml':'image/'+(e==='jpg'?'jpeg':e); App.prefetchCache[rel] = URL.createObjectURL(new Blob([buf], { type: mime })); } catch(_) {} } }
+async function prefetchV(cur) { for (const off of [1,-1,2,-2,3,-3]) { const i = cur+off; if (i<0||i>=App.viewerImages.length) continue; const e = App.viewerImages[i]; if (fileCategory(e.name) !== 'image') continue; const rel = entryRelPath(e); if (App.prefetchCache[rel]) continue; try { const buf = await App.storage.loadBinary(rel); const mime = fileMime(e.name); App.prefetchCache[rel] = URL.createObjectURL(new Blob([buf], { type: mime })); } catch(_) {} } }
 function vPrev() { if (App.viewerIndex > 0) loadViewerPage(App.viewerIndex - 1); }
 function vNext() { if (App.viewerIndex < App.viewerImages.length - 1) loadViewerPage(App.viewerIndex + 1); }
 function updateVSlider() { const s = $('#viewer-slider'); s.max = App.viewerImages.length-1; s.value = App.viewerIndex; $('#viewer-page-label').textContent = `${App.viewerIndex+1} / ${App.viewerImages.length}`; }
@@ -1982,7 +2102,7 @@ function setupEvents() {
 function handleOpen(el) {
   const entry = App.entries[parseInt(el.dataset.index)]; if (!entry) return;
   if (entry['.tag'] === 'folder') navigate(entryRelPath(entry));
-  else if (IMG_EXT.has(ext(entry.name))) openViewer(entry);
+  else if (VIEWABLE_EXT.has(ext(entry.name))) openViewer(entry);
 }
 
 document.addEventListener('DOMContentLoaded', init);
