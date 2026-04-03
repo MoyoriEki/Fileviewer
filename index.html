@@ -293,6 +293,7 @@ body {
 #viewer-title { flex: 1; font-size: 13px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .viewer-btn { width: 36px; height: 36px; border: none; border-radius: var(--radius); background: rgba(255,255,255,0.1); color: #fff; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
 .viewer-btn:hover { background: rgba(255,255,255,0.2); }
+.viewer-btn.active { background: var(--accent); color: #fff; }
 #viewer-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
 #viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; }
 #viewer-img.loading { opacity: 0; }
@@ -473,10 +474,10 @@ body {
 </div>
 
 <div id="viewer">
-  <div id="viewer-topbar"><span id="viewer-title"></span><button class="viewer-btn" id="viewer-close" title="閉じる">✕</button></div>
+  <div id="viewer-topbar"><span id="viewer-title"></span><button class="viewer-btn" id="viewer-loop" title="リピート" style="display:none">🔁</button><button class="viewer-btn" id="viewer-close" title="閉じる">✕</button></div>
   <div id="viewer-img-wrap"><div class="tap-zone left" id="tap-left"></div><div class="tap-zone center" id="tap-center"></div><div class="tap-zone right" id="tap-right"></div><img id="viewer-img" src="" alt=""></div>
-  <div id="viewer-video-wrap" style="display:none;flex:1;align-items:center;justify-content:center;overflow:hidden"><video id="viewer-video" controls loop></video></div>
-  <div id="viewer-audio-wrap" style="display:none"><span id="viewer-audio-icon">🎵</span><span id="viewer-audio-name"></span><audio id="viewer-audio" controls loop></audio></div>
+  <div id="viewer-video-wrap" style="display:none;flex:1;align-items:center;justify-content:center;overflow:hidden"><video id="viewer-video" controls></video></div>
+  <div id="viewer-audio-wrap" style="display:none"><span id="viewer-audio-icon">🎵</span><span id="viewer-audio-name"></span><audio id="viewer-audio" controls></audio></div>
   <div id="viewer-text-wrap" style="display:none"><pre id="viewer-text"></pre></div>
   <div id="viewer-pdf-wrap" style="display:none"><iframe id="viewer-pdf"></iframe></div>
   <div id="viewer-bottombar"><input type="range" id="viewer-slider" min="0" max="0" value="0"><span id="viewer-page-label"></span></div>
@@ -1801,6 +1802,7 @@ async function loadViewerPage(idx) {
   const entry = App.viewerImages[idx], rel = entryRelPath(entry), g = ++vGen;
   const cat = fileCategory(entry.name), mime = fileMime(entry.name);
   $('#viewer-title').textContent = entry.name; updateVSlider();
+  $('#viewer-loop').style.display = (cat === 'video' || cat === 'audio') ? '' : 'none';
   hideAllViewerPanes();
 
   try {
@@ -1815,13 +1817,15 @@ async function loadViewerPage(idx) {
       $('#viewer-img-wrap').style.display = 'none';
       $('#viewer-video-wrap').style.display = 'flex';
       const link = await getTemporaryLink(rel); if (g !== vGen) return;
-      const vid = $('#viewer-video'); vid.src = link; vid.load();
+      const loopOn = $('#viewer-loop').classList.contains('active');
+      const vid = $('#viewer-video'); vid.loop = loopOn; vid.src = link; vid.load();
     } else if (cat === 'audio') {
       $('#viewer-img-wrap').style.display = 'none';
       $('#viewer-audio-wrap').style.display = 'flex';
       $('#viewer-audio-name').textContent = entry.name;
       const link = await getTemporaryLink(rel); if (g !== vGen) return;
-      const aud = $('#viewer-audio'); aud.src = link; aud.load();
+      const loopOn = $('#viewer-loop').classList.contains('active');
+      const aud = $('#viewer-audio'); aud.loop = loopOn; aud.src = link; aud.load();
     } else if (cat === 'text') {
       $('#viewer-img-wrap').style.display = 'none';
       $('#viewer-text-wrap').style.display = 'flex';
@@ -2043,6 +2047,12 @@ function setupEvents() {
 
   // Viewer
   $('#viewer-close').onclick = () => { closeViewer(); history.back(); };
+  $('#viewer-loop').onclick = () => {
+    const btn = $('#viewer-loop'), on = !btn.classList.contains('active');
+    btn.classList.toggle('active', on);
+    $('#viewer-video').loop = on;
+    $('#viewer-audio').loop = on;
+  };
 
   // Tree right-click
   $('#tree-list').addEventListener('contextmenu', e => {
