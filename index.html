@@ -944,7 +944,12 @@ function showCtx(x, y, entry, multi) {
     else if (PDF_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">📕</span>PDFを開く</div><div class="ctx-sep"></div>'; }
     h += '<div class="ctx-item" data-action="rename"><span class="ctx-icon">✏</span>名前の変更</div>';
     h += '<div class="ctx-item" data-action="move"><span class="ctx-icon">📦</span>移動</div>';
-    h += '<div class="ctx-item" data-action="copy"><span class="ctx-icon">📋</span>コピー</div>';
+    if (!isF && IMG_EXT.has(e)) {
+      h += '<div class="ctx-item" data-action="clipboard"><span class="ctx-icon">📋</span>コピー</div>';
+      h += '<div class="ctx-item" data-action="copy"><span class="ctx-icon">📂</span>フォルダにコピー</div>';
+    } else {
+      h += '<div class="ctx-item" data-action="copy"><span class="ctx-icon">📋</span>コピー</div>';
+    }
     if (!isF) {
       h += '<div class="ctx-item" data-action="download"><span class="ctx-icon">⬇</span>ダウンロード</div>';
       h += '<div class="ctx-item" data-action="info"><span class="ctx-icon">ℹ</span>情報</div>';
@@ -991,6 +996,7 @@ async function doCtx(action) {
   else if (action === 'copy') openPicker('copy', [entry]);
   else if (action === 'move-multi') openPicker('move', selectedEntries());
   else if (action === 'copy-multi') openPicker('copy', selectedEntries());
+  else if (action === 'clipboard') await clipboardCopy(entry);
   else if (action === 'download') await downloadEntry(entry);
   else if (action === 'info') showInfo(entry);
   else if (action === 'new-folder') await createNewFolder();
@@ -1320,6 +1326,34 @@ async function downloadEntry(entry) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast('ダウンロード完了');
   } catch(e) { toast('ダウンロードエラー: ' + e.message); }
+}
+
+// ── Clipboard Copy (Image) ──
+async function clipboardCopy(entry) {
+  toast('コピー中...');
+  try {
+    const rel = entryRelPath(entry);
+    const buf = await App.storage.loadBinary(rel);
+    const e = ext(entry.name);
+    // Clipboard API requires image/png
+    let blob;
+    if (e === 'png') {
+      blob = new Blob([buf], { type: 'image/png' });
+    } else {
+      // Convert to PNG via canvas
+      const srcBlob = new Blob([buf], { type: fileMime(entry.name) });
+      const url = URL.createObjectURL(srcBlob);
+      const img = new Image();
+      await new Promise((ok, ng) => { img.onload = ok; img.onerror = ng; img.src = url; });
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      blob = await new Promise(ok => c.toBlob(ok, 'image/png'));
+    }
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    toast('クリップボードにコピーしました');
+  } catch(e) { toast('コピーエラー: ' + e.message); }
 }
 
 // ── File Info ──
