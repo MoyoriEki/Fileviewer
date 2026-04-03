@@ -543,7 +543,7 @@ const App = {
 
 const THUMB_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','ppm','mp4','webm','ogv','mov','m4v']);
 const IMG_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','svg']);
-const VIDEO_EXT = new Set(['mp4','webm','ogv','mov','m4v']);
+const VIDEO_EXT = new Set(['mp4','webm','ogv','mov','m4v','mkv']);
 const AUDIO_EXT = new Set(['mp3','wav','ogg','flac','aac','m4a','opus','weba']);
 const TEXT_EXT = new Set(['txt','md','markdown','json','js','mjs','ts','tsx','jsx','py','html','htm','css','scss','less','xml','csv','log','yaml','yml','toml','ini','cfg','sh','bash','zsh','bat','rb','go','rs','java','c','cpp','h','hpp','php','sql','swift','kt','r','lua','pl','ex','exs','hs','elm','vue','svelte','diff','patch','env','gitignore','dockerfile','makefile']);
 const PDF_EXT = new Set(['pdf']);
@@ -557,6 +557,7 @@ function fileMime(name) {
   if (e === 'webm') return 'video/webm';
   if (e === 'ogv') return 'video/ogg';
   if (e === 'mov') return 'video/quicktime';
+  if (e === 'mkv') return 'video/x-matroska';
   if (e === 'mp3') return 'audio/mpeg';
   if (e === 'wav') return 'audio/wav';
   if (e === 'ogg' || e === 'opus') return 'audio/' + e;
