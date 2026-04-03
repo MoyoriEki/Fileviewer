@@ -533,7 +533,7 @@ body {
 const App = {
   storage: null, currentPath: '', entries: [], favorites: [],
   thumbCache: {}, sortMode: 'name_asc', thumbSize: 160,
-  viewerImages: [], viewerIndex: 0, viewerVisible: false, toolbarTimer: null,
+  viewerImages: [], viewerIndex: 0, viewerVisible: false, toolbarTimer: null, fileClip: [],
   prefetchCache: {}, navGen: 0,
   // Selection & reorder
   selected: new Set(),
@@ -932,7 +932,7 @@ function showCtx(x, y, entry, multi) {
     h += `<div class="ctx-item" style="color:var(--text-muted);pointer-events:none;font-size:11.5px">${count}件選択中</div><div class="ctx-sep"></div>`;
     h += '<div class="ctx-item" data-action="batch-rename"><span class="ctx-icon">🔢</span>連番リネーム</div>';
     h += '<div class="ctx-item" data-action="move-multi"><span class="ctx-icon">📦</span>移動</div>';
-    h += '<div class="ctx-item" data-action="copy-multi"><span class="ctx-icon">📋</span>コピー</div>';
+    h += '<div class="ctx-item" data-action="yank-multi"><span class="ctx-icon">📋</span>コピー</div>';
     h += '<div class="ctx-sep"></div>';
     h += '<div class="ctx-item danger" data-action="delete-multi"><span class="ctx-icon">🗑</span>まとめて削除</div>';
   } else {
@@ -945,11 +945,9 @@ function showCtx(x, y, entry, multi) {
     h += '<div class="ctx-item" data-action="rename"><span class="ctx-icon">✏</span>名前の変更</div>';
     h += '<div class="ctx-item" data-action="move"><span class="ctx-icon">📦</span>移動</div>';
     if (!isF && IMG_EXT.has(e)) {
-      h += '<div class="ctx-item" data-action="clipboard"><span class="ctx-icon">📋</span>コピー</div>';
-      h += '<div class="ctx-item" data-action="copy"><span class="ctx-icon">📂</span>フォルダにコピー</div>';
-    } else {
-      h += '<div class="ctx-item" data-action="copy"><span class="ctx-icon">📋</span>コピー</div>';
+      h += '<div class="ctx-item" data-action="clipboard"><span class="ctx-icon">🖼</span>画像をコピー</div>';
     }
+    h += '<div class="ctx-item" data-action="yank"><span class="ctx-icon">📋</span>コピー</div>';
     if (!isF) {
       h += '<div class="ctx-item" data-action="download"><span class="ctx-icon">⬇</span>ダウンロード</div>';
       h += '<div class="ctx-item" data-action="info"><span class="ctx-icon">ℹ</span>情報</div>';
@@ -962,7 +960,12 @@ function showCtx(x, y, entry, multi) {
 function showCtxEmpty(x, y) {
   ctxTarget = null; ctxIsMulti = false;
   const m = $('#ctx-menu');
-  m.innerHTML = '<div class="ctx-item" data-action="new-folder"><span class="ctx-icon">📁</span>新規フォルダ</div>';
+  let eh = '';
+  if (App.fileClip && App.fileClip.length) {
+    eh += `<div class="ctx-item" data-action="paste"><span class="ctx-icon">📋</span>ペースト（${App.fileClip.length}件）</div><div class="ctx-sep"></div>`;
+  }
+  eh += '<div class="ctx-item" data-action="new-folder"><span class="ctx-icon">📁</span>新規フォルダ</div>';
+  m.innerHTML = eh;
   m.style.left = Math.min(x, innerWidth - 200) + 'px'; m.style.top = Math.min(y, innerHeight - 200) + 'px'; m.classList.add('show');
 }
 function showCtxTree(x, y, path) {
@@ -993,9 +996,10 @@ async function doCtx(action) {
   else if (action === 'batch-rename') openBatchRename();
   else if (action === 'delete-multi') await deleteMulti();
   else if (action === 'move') openPicker('move', [entry]);
-  else if (action === 'copy') openPicker('copy', [entry]);
   else if (action === 'move-multi') openPicker('move', selectedEntries());
-  else if (action === 'copy-multi') openPicker('copy', selectedEntries());
+  else if (action === 'yank') { App.fileClip = [entry]; toast('コピーしました'); }
+  else if (action === 'yank-multi') { App.fileClip = selectedEntries(); toast(`${App.fileClip.length}件コピーしました`); }
+  else if (action === 'paste') await pasteFiles();
   else if (action === 'clipboard') await clipboardCopy(entry);
   else if (action === 'download') await downloadEntry(entry);
   else if (action === 'info') showInfo(entry);
@@ -1187,6 +1191,20 @@ async function dropboxCopy(fromRel, toRel) {
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
+}
+
+// ── Paste Files ──
+async function pasteFiles() {
+  if (!App.fileClip.length) return;
+  toast('ペースト中...');
+  let ok = 0, fail = 0;
+  for (const entry of App.fileClip) {
+    const fromRel = entryRelPath(entry);
+    const toRel = App.currentPath ? App.currentPath + '/' + entry.name : entry.name;
+    try { await dropboxCopy(fromRel, toRel); ok++; } catch(_) { fail++; }
+  }
+  toast(fail ? `${ok}件ペースト（${fail}件エラー）` : `${ok}件ペーストしました`);
+  loadFolder(App.currentPath);
 }
 
 // ── Move/Copy Picker ──
