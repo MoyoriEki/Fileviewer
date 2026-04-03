@@ -305,7 +305,7 @@ body {
 #viewer-page-label { font-size: 12px; color: rgba(255,255,255,0.7); min-width: 60px; text-align: right; }
 
 /* ── Video/Audio/Text/PDF Viewer ──────────────────────── */
-#viewer-video { max-width: 100%; max-height: 100%; outline: none; }
+#viewer-video { width: 100%; height: 100%; object-fit: contain; outline: none; background: #000; }
 #viewer-audio-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 40px; }
 #viewer-audio-icon { font-size: 80px; opacity: 0.7; }
 #viewer-audio-name { font-size: 15px; color: #fff; text-align: center; word-break: break-all; max-width: 80%; }
@@ -1153,6 +1153,20 @@ async function createNewFolder() {
   } catch(e) { toast('エラー: ' + e.message); }
 }
 
+// ── Dropbox Temporary Link (for streaming video/audio) ──
+async function getTemporaryLink(rel) {
+  const path = rel.startsWith('/') ? rel : '/' + rel;
+  const token = App.storage.getToken();
+  const r = await fetch('https://api.dropboxapi.com/2/files/get_temporary_link', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  const data = await r.json();
+  return data.link;
+}
+
 // ── Dropbox Copy API (not in StorageBridge) ──
 async function dropboxCopy(fromRel, toRel) {
   const fromPath = fromRel.startsWith('/') ? fromRel : '/' + fromRel;
@@ -1799,16 +1813,14 @@ async function loadViewerPage(idx) {
     } else if (cat === 'video') {
       $('#viewer-img-wrap').style.display = 'none';
       $('#viewer-video-wrap').style.display = 'flex';
-      const buf = await App.storage.loadBinary(rel); if (g !== vGen) return;
-      const u = URL.createObjectURL(new Blob([buf], { type: mime }));
-      const vid = $('#viewer-video'); vid.src = u; vid.load();
+      const link = await getTemporaryLink(rel); if (g !== vGen) return;
+      const vid = $('#viewer-video'); vid.src = link; vid.load();
     } else if (cat === 'audio') {
       $('#viewer-img-wrap').style.display = 'none';
       $('#viewer-audio-wrap').style.display = 'flex';
       $('#viewer-audio-name').textContent = entry.name;
-      const buf = await App.storage.loadBinary(rel); if (g !== vGen) return;
-      const u = URL.createObjectURL(new Blob([buf], { type: mime }));
-      const aud = $('#viewer-audio'); aud.src = u; aud.load();
+      const link = await getTemporaryLink(rel); if (g !== vGen) return;
+      const aud = $('#viewer-audio'); aud.src = link; aud.load();
     } else if (cat === 'text') {
       $('#viewer-img-wrap').style.display = 'none';
       $('#viewer-text-wrap').style.display = 'flex';
