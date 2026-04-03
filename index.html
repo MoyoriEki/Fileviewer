@@ -293,6 +293,7 @@ body {
 #viewer-title { flex: 1; font-size: 13px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .viewer-btn { width: 36px; height: 36px; border: none; border-radius: var(--radius); background: rgba(255,255,255,0.1); color: #fff; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
 .viewer-btn:hover { background: rgba(255,255,255,0.2); }
+.viewer-btn.active { background: var(--accent); color: #fff; }
 #viewer-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
 #viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; }
 #viewer-img.loading { opacity: 0; }
@@ -473,7 +474,7 @@ body {
 </div>
 
 <div id="viewer">
-  <div id="viewer-topbar"><span id="viewer-title"></span><button class="viewer-btn" id="viewer-close" title="閉じる">✕</button></div>
+  <div id="viewer-topbar"><span id="viewer-title"></span><button class="viewer-btn" id="viewer-loop" title="リピート" style="display:none">🔁</button><button class="viewer-btn" id="viewer-close" title="閉じる">✕</button></div>
   <div id="viewer-img-wrap"><div class="tap-zone left" id="tap-left"></div><div class="tap-zone center" id="tap-center"></div><div class="tap-zone right" id="tap-right"></div><img id="viewer-img" src="" alt=""></div>
   <div id="viewer-video-wrap" style="display:none;flex:1;align-items:center;justify-content:center;overflow:hidden"><video id="viewer-video" controls></video></div>
   <div id="viewer-audio-wrap" style="display:none"><span id="viewer-audio-icon">🎵</span><span id="viewer-audio-name"></span><audio id="viewer-audio" controls></audio></div>
@@ -542,7 +543,7 @@ const App = {
 
 const THUMB_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','ppm','mp4','webm','ogv','mov','m4v']);
 const IMG_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','svg']);
-const VIDEO_EXT = new Set(['mp4','webm','ogv','mov','m4v']);
+const VIDEO_EXT = new Set(['mp4','webm','ogv','mov','m4v','mkv']);
 const AUDIO_EXT = new Set(['mp3','wav','ogg','flac','aac','m4a','opus','weba']);
 const TEXT_EXT = new Set(['txt','md','markdown','json','js','mjs','ts','tsx','jsx','py','html','htm','css','scss','less','xml','csv','log','yaml','yml','toml','ini','cfg','sh','bash','zsh','bat','rb','go','rs','java','c','cpp','h','hpp','php','sql','swift','kt','r','lua','pl','ex','exs','hs','elm','vue','svelte','diff','patch','env','gitignore','dockerfile','makefile']);
 const PDF_EXT = new Set(['pdf']);
@@ -556,6 +557,7 @@ function fileMime(name) {
   if (e === 'webm') return 'video/webm';
   if (e === 'ogv') return 'video/ogg';
   if (e === 'mov') return 'video/quicktime';
+  if (e === 'mkv') return 'video/x-matroska';
   if (e === 'mp3') return 'audio/mpeg';
   if (e === 'wav') return 'audio/wav';
   if (e === 'ogg' || e === 'opus') return 'audio/' + e;
@@ -942,7 +944,12 @@ function showCtx(x, y, entry, multi) {
     else if (PDF_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">📕</span>PDFを開く</div><div class="ctx-sep"></div>'; }
     h += '<div class="ctx-item" data-action="rename"><span class="ctx-icon">✏</span>名前の変更</div>';
     h += '<div class="ctx-item" data-action="move"><span class="ctx-icon">📦</span>移動</div>';
-    h += '<div class="ctx-item" data-action="copy"><span class="ctx-icon">📋</span>コピー</div>';
+    if (!isF && IMG_EXT.has(e)) {
+      h += '<div class="ctx-item" data-action="clipboard"><span class="ctx-icon">📋</span>コピー</div>';
+      h += '<div class="ctx-item" data-action="copy"><span class="ctx-icon">📂</span>フォルダにコピー</div>';
+    } else {
+      h += '<div class="ctx-item" data-action="copy"><span class="ctx-icon">📋</span>コピー</div>';
+    }
     if (!isF) {
       h += '<div class="ctx-item" data-action="download"><span class="ctx-icon">⬇</span>ダウンロード</div>';
       h += '<div class="ctx-item" data-action="info"><span class="ctx-icon">ℹ</span>情報</div>';
@@ -989,6 +996,7 @@ async function doCtx(action) {
   else if (action === 'copy') openPicker('copy', [entry]);
   else if (action === 'move-multi') openPicker('move', selectedEntries());
   else if (action === 'copy-multi') openPicker('copy', selectedEntries());
+  else if (action === 'clipboard') await clipboardCopy(entry);
   else if (action === 'download') await downloadEntry(entry);
   else if (action === 'info') showInfo(entry);
   else if (action === 'new-folder') await createNewFolder();
@@ -1318,6 +1326,34 @@ async function downloadEntry(entry) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast('ダウンロード完了');
   } catch(e) { toast('ダウンロードエラー: ' + e.message); }
+}
+
+// ── Clipboard Copy (Image) ──
+async function clipboardCopy(entry) {
+  toast('コピー中...');
+  try {
+    const rel = entryRelPath(entry);
+    const buf = await App.storage.loadBinary(rel);
+    const e = ext(entry.name);
+    // Clipboard API requires image/png
+    let blob;
+    if (e === 'png') {
+      blob = new Blob([buf], { type: 'image/png' });
+    } else {
+      // Convert to PNG via canvas
+      const srcBlob = new Blob([buf], { type: fileMime(entry.name) });
+      const url = URL.createObjectURL(srcBlob);
+      const img = new Image();
+      await new Promise((ok, ng) => { img.onload = ok; img.onerror = ng; img.src = url; });
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      blob = await new Promise(ok => c.toBlob(ok, 'image/png'));
+    }
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    toast('クリップボードにコピーしました');
+  } catch(e) { toast('コピーエラー: ' + e.message); }
 }
 
 // ── File Info ──
@@ -1801,6 +1837,7 @@ async function loadViewerPage(idx) {
   const entry = App.viewerImages[idx], rel = entryRelPath(entry), g = ++vGen;
   const cat = fileCategory(entry.name), mime = fileMime(entry.name);
   $('#viewer-title').textContent = entry.name; updateVSlider();
+  $('#viewer-loop').style.display = (cat === 'video' || cat === 'audio') ? '' : 'none';
   hideAllViewerPanes();
 
   try {
@@ -1815,13 +1852,15 @@ async function loadViewerPage(idx) {
       $('#viewer-img-wrap').style.display = 'none';
       $('#viewer-video-wrap').style.display = 'flex';
       const link = await getTemporaryLink(rel); if (g !== vGen) return;
-      const vid = $('#viewer-video'); vid.src = link; vid.load();
+      const loopOn = $('#viewer-loop').classList.contains('active');
+      const vid = $('#viewer-video'); vid.loop = loopOn; vid.src = link; vid.load();
     } else if (cat === 'audio') {
       $('#viewer-img-wrap').style.display = 'none';
       $('#viewer-audio-wrap').style.display = 'flex';
       $('#viewer-audio-name').textContent = entry.name;
       const link = await getTemporaryLink(rel); if (g !== vGen) return;
-      const aud = $('#viewer-audio'); aud.src = link; aud.load();
+      const loopOn = $('#viewer-loop').classList.contains('active');
+      const aud = $('#viewer-audio'); aud.loop = loopOn; aud.src = link; aud.load();
     } else if (cat === 'text') {
       $('#viewer-img-wrap').style.display = 'none';
       $('#viewer-text-wrap').style.display = 'flex';
@@ -2043,6 +2082,12 @@ function setupEvents() {
 
   // Viewer
   $('#viewer-close').onclick = () => { closeViewer(); history.back(); };
+  $('#viewer-loop').onclick = () => {
+    const btn = $('#viewer-loop'), on = !btn.classList.contains('active');
+    btn.classList.toggle('active', on);
+    $('#viewer-video').loop = on;
+    $('#viewer-audio').loop = on;
+  };
 
   // Tree right-click
   $('#tree-list').addEventListener('contextmenu', e => {
