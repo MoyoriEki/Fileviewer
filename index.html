@@ -1692,6 +1692,8 @@ function initDragReorder() {
 
   // Touch D&D
   let tSrc = null, tClone = null, tLP = null;
+  let tAutoScrollRAF = null, tLastTouchX = 0, tLastTouchY = 0;
+  const ASCROLL_ZONE = 50, ASCROLL_SPEED = 8;
   grid.addEventListener('touchstart', e => {
     const item = e.target.closest('.grid-item'); if (!item) return;
     tLP = setTimeout(() => {
@@ -1706,6 +1708,8 @@ function initDragReorder() {
   }, { passive: true });
   grid.addEventListener('touchmove', e => {
     if (tClone) { e.preventDefault(); posC(e.touches[0]);
+      tLastTouchX = e.touches[0].clientX; tLastTouchY = e.touches[0].clientY;
+      if (!tAutoScrollRAF) tAutoScrollRAF = requestAnimationFrame(autoScrollStep);
       document.querySelectorAll('.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('drag-over-before','drag-over-after','drop-target'));
       const pt = e.touches[0];
       const treeRow = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.tree-row');
@@ -1774,9 +1778,31 @@ function initDragReorder() {
       tClone.remove(); tClone = null;
       document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
       tSrc = null; App._touchDragging = false;
+      if (tAutoScrollRAF) { cancelAnimationFrame(tAutoScrollRAF); tAutoScrollRAF = null; }
     }
   });
   function posC(t) { if (tClone) { tClone.style.left = (t.clientX-40)+'px'; tClone.style.top = (t.clientY-40)+'px'; } }
+  function autoScrollStep() {
+    if (!tClone) { tAutoScrollRAF = null; return; }
+    const main = $('#main'), mr = main.getBoundingClientRect();
+    if (tLastTouchY < mr.top + ASCROLL_ZONE && tLastTouchY >= mr.top) {
+      main.scrollTop -= ASCROLL_SPEED;
+    } else if (tLastTouchY > mr.bottom - ASCROLL_ZONE && tLastTouchY <= mr.bottom) {
+      main.scrollTop += ASCROLL_SPEED;
+    }
+    const tl = $('#tree-list');
+    if (tl) {
+      const tr = tl.getBoundingClientRect();
+      if (tLastTouchX >= tr.left && tLastTouchX <= tr.right) {
+        if (tLastTouchY < tr.top + ASCROLL_ZONE && tLastTouchY >= tr.top) {
+          tl.scrollTop -= ASCROLL_SPEED;
+        } else if (tLastTouchY > tr.bottom - ASCROLL_ZONE && tLastTouchY <= tr.bottom) {
+          tl.scrollTop += ASCROLL_SPEED;
+        }
+      }
+    }
+    tAutoScrollRAF = requestAnimationFrame(autoScrollStep);
+  }
 }
 
 function reorderEntries(dropIdx, before) {
