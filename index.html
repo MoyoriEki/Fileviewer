@@ -178,7 +178,7 @@ body {
 #sidebar.hidden { display: none; }
 #sidebar-header { padding: 10px 12px 6px; font-size: 11px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase; }
 #fav-list { overflow-y: auto; padding: 2px 6px 10px; max-height: 40%; }
-.fav-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--radius); cursor: pointer; font-size: 12.5px; color: var(--text); }
+.fav-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--radius); cursor: pointer; font-size: 12.5px; color: var(--text); position: relative; }
 .fav-item:hover { background: var(--bg-hover); }
 .fav-item.active { background: var(--accent-dim); color: var(--accent); }
 .fav-item .fav-icon { font-size: 14px; flex-shrink: 0; }
@@ -186,6 +186,12 @@ body {
 .fav-item .fav-remove { display: none; width: 18px; height: 18px; border: none; border-radius: 3px; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 12px; align-items: center; justify-content: center; }
 .fav-item:hover .fav-remove { display: flex; }
 .fav-item .fav-remove:hover { background: var(--danger-dim); color: var(--danger); }
+.fav-item.dragging { opacity: 0.25; }
+.fav-item.drop-target { background: var(--accent-dim); outline: 1.5px dashed var(--accent); outline-offset: -1.5px; }
+.fav-item.drag-over-before::before,
+.fav-item.drag-over-after::after { content: ''; position: absolute; left: 4px; right: 4px; height: 2px; background: var(--accent); border-radius: 1px; z-index: 5; }
+.fav-item.drag-over-before::before { top: -1px; }
+.fav-item.drag-over-after::after { bottom: -1px; }
 #sidebar-footer { padding: 8px; border-top: 1px solid var(--border); }
 #sidebar-footer button { width: 100%; padding: 5px; border: none; border-radius: var(--radius); background: transparent; color: var(--text-muted); cursor: pointer; font-family: inherit; font-size: 11.5px; }
 #sidebar-footer button:hover { background: var(--bg-hover); color: var(--text); }
@@ -916,10 +922,18 @@ function renderFP(idx, gen, data) {
 function renderFavorites() {
   const l = $('#fav-list');
   if (!App.favorites.length) { l.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:11.5px;text-align:center">お気に入りなし</div>'; return; }
-  l.innerHTML = App.favorites.map((f, i) => `<div class="fav-item${App.currentPath===f.path?' active':''}" data-path="${f.path}" data-index="${i}"><span class="fav-icon">📁</span><span class="fav-name" title="${f.path||'ルート'}">${f.name}</span><button class="fav-remove" data-index="${i}" title="削除">✕</button></div>`).join('');
+  l.innerHTML = App.favorites.map((f, i) => `<div class="fav-item${App.currentPath===f.path?' active':''}" data-path="${f.path}" data-index="${i}" draggable="true"><span class="fav-icon">📁</span><span class="fav-name" title="${f.path||'ルート'}">${f.name}</span><button class="fav-remove" data-index="${i}" title="削除">✕</button></div>`).join('');
 }
 function addFavorite(p) { if (App.favorites.some(f => f.path === p)) { toast('追加済み'); return; } App.favorites.push({ path: p, name: p ? baseName(p) : 'ルート' }); saveSetting('favorites', App.favorites); renderFavorites(); toast('お気に入りに追加'); }
 function removeFavorite(i) { App.favorites.splice(i, 1); saveSetting('favorites', App.favorites); renderFavorites(); }
+function reorderFavorites(srcIdx, dropIdx, before) {
+  const [item] = App.favorites.splice(srcIdx, 1);
+  let ni = dropIdx > srcIdx ? dropIdx - 1 : dropIdx;
+  if (!before) ni++;
+  App.favorites.splice(ni, 0, item);
+  saveSetting('favorites', App.favorites);
+  renderFavorites();
+}
 
 // ── Context Menu ──
 let ctxTarget = null, ctxIsMulti = false;
@@ -1712,10 +1726,13 @@ function initDragReorder() {
       if (!tAutoScrollRAF) tAutoScrollRAF = requestAnimationFrame(autoScrollStep);
       document.querySelectorAll('.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('drag-over-before','drag-over-after','drop-target'));
       const pt = e.touches[0];
-      const treeRow = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.tree-row');
+      const elUnder = document.elementFromPoint(pt.clientX, pt.clientY);
+      const treeRow = elUnder?.closest('.tree-row');
+      const favItem = !treeRow ? elUnder?.closest('.fav-item') : null;
       if (treeRow) { treeRow.classList.add('drop-target'); }
+      else if (favItem) { favItem.classList.add('drop-target'); }
       else {
-        const under = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.grid-item');
+        const under = elUnder?.closest('.grid-item');
         if (under) {
           if (under.dataset.tag === 'folder' && !App.selected.has(parseInt(under.dataset.index))) {
             under.classList.add('drop-target');
@@ -1737,15 +1754,16 @@ function initDragReorder() {
 
       let handled = false;
 
-      // Check tree row
-      const treeRow = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.tree-row');
-      if (treeRow && items.length) {
-        const destPath = treeRow.dataset.path;
+      // Check tree row or fav-item
+      const elUnder = document.elementFromPoint(pt.clientX, pt.clientY);
+      const treeRow = elUnder?.closest('.tree-row');
+      const favItem = !treeRow ? elUnder?.closest('.fav-item') : null;
+      if ((treeRow || favItem) && items.length) {
+        const destPath = treeRow ? treeRow.dataset.path : favItem.dataset.path;
         const invalid = items.some(it => { const rel = entryRelPath(it); return destPath === parentPath(rel) || (it['.tag']==='folder' && (destPath===rel||destPath.startsWith(rel+'/'))); });
         if (!invalid) {
-          toast('移動中...'); let ok=0, fail=0;
-          for (const it of items) { try { await App.storage.move(entryRelPath(it), destPath ? destPath+'/'+it.name : it.name); ok++; } catch(_) { fail++; } }
-          toast(fail ? `${ok}件移動（${fail}件エラー）` : `${ok}件移動しました`);
+          toast('移動中...');
+          await moveItemsWithUndo(items, destPath);
           App.selected.clear(); updateSelBadge(); loadFolder(App.currentPath); loadTree();
         } else toast('移動先が無効です');
         handled = true;
@@ -1963,6 +1981,48 @@ function setupEvents() {
   $('#btn-add-fav').onclick = () => addFavorite(App.currentPath);
   $('#fav-list').addEventListener('click', e => { const rm = e.target.closest('.fav-remove'); if (rm) { removeFavorite(parseInt(rm.dataset.index)); return; } const item = e.target.closest('.fav-item'); if (item) { navigate(item.dataset.path); $('#sidebar').classList.remove('mobile-open'); } });
 
+  // Touch D&D for fav-list reorder
+  let favTSrc = null, favTClone = null, favTLP = null;
+  $('#fav-list').addEventListener('touchstart', e => {
+    const item = e.target.closest('.fav-item'); if (!item || e.target.closest('.fav-remove')) return;
+    favTLP = setTimeout(() => {
+      favTSrc = parseInt(item.dataset.index);
+      item.classList.add('dragging');
+      favTClone = item.cloneNode(true); favTClone.className = 'touch-drag-clone';
+      favTClone.style.width = item.offsetWidth + 'px'; favTClone.style.height = item.offsetHeight + 'px';
+      document.body.appendChild(favTClone); favPosC(e.touches[0]);
+    }, 400);
+  }, { passive: true });
+  $('#fav-list').addEventListener('touchmove', e => {
+    if (favTClone) {
+      e.preventDefault(); favPosC(e.touches[0]);
+      document.querySelectorAll('.fav-item.drag-over-before,.fav-item.drag-over-after').forEach(el => el.classList.remove('drag-over-before','drag-over-after'));
+      const under = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.fav-item');
+      if (under && parseInt(under.dataset.index) !== favTSrc) {
+        const r = under.getBoundingClientRect();
+        (e.touches[0].clientY < r.top + r.height / 2) ? under.classList.add('drag-over-before') : under.classList.add('drag-over-after');
+      }
+    } else clearTimeout(favTLP);
+  }, { passive: false });
+  $('#fav-list').addEventListener('touchend', e => {
+    clearTimeout(favTLP);
+    if (favTClone && favTSrc !== null) {
+      const pt = e.changedTouches[0];
+      const under = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.fav-item');
+      if (under) {
+        const di = parseInt(under.dataset.index);
+        if (di !== favTSrc) {
+          const r = under.getBoundingClientRect();
+          reorderFavorites(favTSrc, di, pt.clientY < r.top + r.height / 2);
+        }
+      }
+      favTClone.remove(); favTClone = null;
+      document.querySelectorAll('.fav-item.dragging,.fav-item.drag-over-before,.fav-item.drag-over-after').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after'));
+      favTSrc = null;
+    }
+  });
+  function favPosC(t) { if (favTClone) { favTClone.style.left = (t.clientX - 40) + 'px'; favTClone.style.top = (t.clientY - 15) + 'px'; } }
+
   // Grid click — single click/tap selects, double click/tap opens
   let lastTapT = 0, lastTapEl = null;
   $('#grid').addEventListener('click', e => {
@@ -2173,6 +2233,67 @@ function setupEvents() {
     App.selected.clear(); updateSelBadge();
     loadFolder(App.currentPath); loadTree();
   });
+
+  // Fav-list D&D: reorder favorites + drop grid items onto favorites
+  let favDragIdx = null;
+  $('#fav-list').addEventListener('dragstart', e => {
+    const item = e.target.closest('.fav-item'); if (!item) { e.preventDefault(); return; }
+    favDragIdx = parseInt(item.dataset.index);
+    item.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', '');
+  });
+  $('#fav-list').addEventListener('dragend', () => {
+    document.querySelectorAll('.fav-item.dragging,.fav-item.drag-over-before,.fav-item.drag-over-after,.fav-item.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
+    favDragIdx = null;
+  });
+  $('#fav-list').addEventListener('dragover', e => {
+    const isGridDrag = dragSrcIdx !== null || App.selected.size;
+    const isFavDrag = favDragIdx !== null;
+    if (!isGridDrag && !isFavDrag) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.fav-item.drag-over-before,.fav-item.drag-over-after,.fav-item.drop-target').forEach(el => el.classList.remove('drag-over-before','drag-over-after','drop-target'));
+    const item = e.target.closest('.fav-item'); if (!item) return;
+    if (isGridDrag && !isFavDrag) {
+      item.classList.add('drop-target');
+    } else if (isFavDrag) {
+      const r = item.getBoundingClientRect();
+      (e.clientY < r.top + r.height / 2) ? item.classList.add('drag-over-before') : item.classList.add('drag-over-after');
+    }
+  });
+  $('#fav-list').addEventListener('dragleave', e => {
+    const item = e.target.closest('.fav-item');
+    if (item) item.classList.remove('drop-target', 'drag-over-before', 'drag-over-after');
+  });
+  $('#fav-list').addEventListener('drop', async e => {
+    e.preventDefault();
+    document.querySelectorAll('.fav-item.dragging,.fav-item.drag-over-before,.fav-item.drag-over-after,.fav-item.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
+    const item = e.target.closest('.fav-item'); if (!item) return;
+    if (favDragIdx !== null) {
+      const dropIdx = parseInt(item.dataset.index);
+      if (dropIdx !== favDragIdx) {
+        const r = item.getBoundingClientRect();
+        reorderFavorites(favDragIdx, dropIdx, e.clientY < r.top + r.height / 2);
+      }
+      favDragIdx = null;
+      return;
+    }
+    // Grid item drop → move files to fav path
+    const destPath = item.dataset.path;
+    const items = App.selected.size > 0
+      ? [...App.selected].map(i => App.entries[i]).filter(Boolean)
+      : (dragSrcIdx !== null && App.entries[dragSrcIdx] ? [App.entries[dragSrcIdx]] : []);
+    if (!items.length) return;
+    const invalid = items.some(it => {
+      const rel = entryRelPath(it);
+      return destPath === parentPath(rel) || (it['.tag'] === 'folder' && (destPath === rel || destPath.startsWith(rel + '/')));
+    });
+    if (invalid) { toast('移動先が無効です'); return; }
+    toast('移動中...');
+    await moveItemsWithUndo(items, destPath);
+    App.selected.clear(); updateSelBadge();
+    loadFolder(App.currentPath); loadTree();
+  });
+
   $('#tap-left').onclick = vPrev; $('#tap-right').onclick = vNext; $('#tap-center').onclick = showViewerBar;
   $('#viewer-slider').oninput = e => loadViewerPage(parseInt(e.target.value));
 
