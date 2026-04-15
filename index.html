@@ -455,8 +455,8 @@ body {
       <option value="date_asc">更新日 ↑</option>
       <option value="size_desc">サイズ ↓</option>
       <option value="size_asc">サイズ ↑</option>
-      <option value="custom">カスタム順</option>
     </select>
+    <button class="tb-btn" id="btn-save-preset" title="現在の並びを新規プリセットとして登録" style="width:26px;height:26px;font-size:13px">📌</button>
     <div class="tb-spacer"></div>
     <input type="range" id="thumb-slider" min="80" max="320" value="160" title="サムネサイズ">
     <div class="tb-spacer"></div>
@@ -544,8 +544,9 @@ const App = {
   prefetchCache: {}, navGen: 0,
   // Selection & reorder
   selected: new Set(),
-  customOrders: {},    // { path: [names] } — saved ordering per folder
-  folderSortModes: {}, // { path: mode } — per-folder sort mode override ('custom' or any standard mode)
+  customOrders: {},    // { path: [names] } — current working (unsaved) custom order per folder
+  customPresets: {},   // { path: [{id, name, order:[names]}] } — named saved custom-order presets
+  folderSortModes: {}, // { path: mode } — per-folder sort mode ('custom' | 'preset:<id>' | standard mode)
   undoStack: [],  // [{type, label, ops:[{from,to}]}]
 };
 
@@ -654,6 +655,7 @@ async function loadSettings() {
     lastPath: await IDB.get('settings','lastPath'),
     sidebarHidden: await IDB.get('settings','sidebarHidden'),
     customOrders: await IDB.get('settings','customOrders'),
+    customPresets: await IDB.get('settings','customPresets'),
     folderSortModes: await IDB.get('settings','folderSortModes'),
   };
 
@@ -671,6 +673,7 @@ async function loadSettings() {
       lastPath: cloud.lastPath ?? local.lastPath ?? '',
       sidebarHidden: cloud.sidebarHidden ?? local.sidebarHidden ?? false,
       customOrders: { ...(local.customOrders || {}), ...(cloud.customOrders || {}) },
+      customPresets: { ...(local.customPresets || {}), ...(cloud.customPresets || {}) },
       folderSortModes: { ...(local.folderSortModes || {}), ...(cloud.folderSortModes || {}) },
     };
   } else {
@@ -681,6 +684,7 @@ async function loadSettings() {
       lastPath: local.lastPath ?? '',
       sidebarHidden: local.sidebarHidden ?? false,
       customOrders: local.customOrders ?? {},
+      customPresets: local.customPresets ?? {},
       folderSortModes: local.folderSortModes ?? {},
     };
     // Push to cloud so other devices can pick it up
@@ -698,6 +702,7 @@ async function loadSettings() {
   IDB.put('settings','lastPath', merged.lastPath);
   IDB.put('settings','sidebarHidden', merged.sidebarHidden);
   IDB.put('settings','customOrders', merged.customOrders);
+  IDB.put('settings','customPresets', merged.customPresets);
   IDB.put('settings','folderSortModes', merged.folderSortModes);
 
   return merged;
@@ -710,6 +715,7 @@ async function saveSettingsNow(data) {
       favorites: App.favorites, lastPath: App.currentPath,
       sidebarHidden: $('#sidebar').classList.contains('hidden'),
       customOrders: App.customOrders || {},
+      customPresets: App.customPresets || {},
       folderSortModes: App.folderSortModes || {},
     };
     await App.storage.save(SETTINGS_PATH, JSON.stringify(d, null, 2));
@@ -728,8 +734,8 @@ function saveSettingsImmediate() {
 
 function saveSetting(key, value) {
   IDB.put('settings', key, value);
-  // Favorites, customOrders, folderSortModes save immediately, others debounced
-  if (key === 'favorites' || key === 'customOrders' || key === 'folderSortModes') saveSettingsImmediate();
+  // Favorites, customOrders, customPresets, folderSortModes save immediately; others debounced
+  if (key === 'favorites' || key === 'customOrders' || key === 'customPresets' || key === 'folderSortModes') saveSettingsImmediate();
   else saveSettings();
 }
 
@@ -752,6 +758,8 @@ async function init() {
   if (localFavs) App.favorites = localFavs;
   const localOrders = await IDB.get('settings','customOrders');
   App.customOrders = localOrders || {};
+  const localPresets = await IDB.get('settings','customPresets');
+  App.customPresets = localPresets || {};
   const localModes = await IDB.get('settings','folderSortModes');
   App.folderSortModes = localModes || {};
   // Backward compat: any saved custom order with no mode → assume 'custom'
@@ -771,6 +779,7 @@ async function init() {
     App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
     App.favorites = s.favorites;
     App.customOrders = s.customOrders || {};
+    App.customPresets = s.customPresets || {};
     App.folderSortModes = s.folderSortModes || {};
     if (s.sidebarHidden) $('#sidebar').classList.add('hidden'); else $('#sidebar').classList.remove('hidden');
     renderFavorites(); loadTree();
@@ -783,6 +792,7 @@ async function init() {
     App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
     App.favorites = s.favorites;
     App.customOrders = s.customOrders || {};
+    App.customPresets = s.customPresets || {};
     App.folderSortModes = s.folderSortModes || {};
     if (s.sidebarHidden) $('#sidebar').classList.add('hidden'); else $('#sidebar').classList.remove('hidden');
     renderFavorites(); loadTree();
@@ -814,7 +824,7 @@ async function loadFolder(path) {
     const entries = await App.storage.list(path || '');
     if (gen !== App.navGen) return;
     App.entries = sortEntries(entries.filter(e => e.name !== '.filer-trash'));
-    if (getEffectiveSortMode() === 'custom') App.entries = applyCustomOrder(App.entries);
+    App.entries = applyModeOrder(App.entries);
     App.selected.clear(); updateSelBadge();
     renderGrid(gen);
   } catch(e) { if (gen === App.navGen) grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">⚠</div><div>読み込みエラー</div></div>'; }
@@ -999,8 +1009,14 @@ function showCtxEmpty(x, y) {
     eh += `<div class="ctx-item" data-action="paste"><span class="ctx-icon">📋</span>ペースト（${App.fileClip.length}件）</div><div class="ctx-sep"></div>`;
   }
   eh += '<div class="ctx-item" data-action="new-folder"><span class="ctx-icon">📁</span>新規フォルダ</div>';
+  eh += '<div class="ctx-sep"></div>';
+  eh += '<div class="ctx-item" data-action="save-preset"><span class="ctx-icon">📌</span>現在の並びを新規プリセット登録</div>';
+  const activePreset = getActivePreset();
+  if (activePreset) {
+    eh += `<div class="ctx-item" data-action="rename-preset"><span class="ctx-icon">✏</span>プリセット名を変更（${escHtml(activePreset.name)}）</div>`;
+    eh += `<div class="ctx-item danger" data-action="delete-preset"><span class="ctx-icon">🗑</span>このプリセットを削除</div>`;
+  }
   if (App.customOrders?.[customOrderKey()] || App.folderSortModes?.[customOrderKey()]) {
-    eh += '<div class="ctx-sep"></div>';
     eh += '<div class="ctx-item" data-action="reset-order"><span class="ctx-icon">↺</span>カスタム順をリセット</div>';
   }
   m.innerHTML = eh;
@@ -1043,6 +1059,9 @@ async function doCtx(action) {
   else if (action === 'info') showInfo(entry);
   else if (action === 'new-folder') await createNewFolder();
   else if (action === 'reset-order') resetCustomOrder();
+  else if (action === 'save-preset') saveAsNewPreset();
+  else if (action === 'rename-preset') renameActivePreset();
+  else if (action === 'delete-preset') deleteActivePreset();
   else if (action.startsWith('tree-')) await doCtxTree(action, entry);
 }
 
@@ -1864,12 +1883,19 @@ function reorderEntries(dropIdx, before) {
   App.selected.clear();
   dragged.forEach(d => { const ni = App.entries.indexOf(d); if (ni >= 0) App.selected.add(ni); });
   saveCustomOrder();
-  setFolderSortMode('custom');
+  // If not already in a preset or custom mode, switch to 'custom' (unsaved)
+  const curMode = App.folderSortModes?.[customOrderKey()];
+  if (!curMode || !(curMode === 'custom' || curMode.startsWith('preset:'))) {
+    setFolderSortMode('custom');
+  } else {
+    updateSortSelectUI();
+  }
   renderGrid(App.navGen);
 }
 
 // ── Custom order persistence ──
 function customOrderKey() { return App.currentPath || '/'; }
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
 function getEffectiveSortMode() {
   return App.folderSortModes?.[customOrderKey()] || App.sortMode;
 }
@@ -1877,18 +1903,62 @@ function setFolderSortMode(mode) {
   if (!App.folderSortModes) App.folderSortModes = {};
   App.folderSortModes[customOrderKey()] = mode;
   saveSetting('folderSortModes', App.folderSortModes);
-  const sel = $('#sort-select');
-  if (sel && sel.value !== mode) sel.value = mode;
+  updateSortSelectUI();
 }
-function updateSortSelectUI() {
-  const sel = $('#sort-select');
-  if (sel) sel.value = getEffectiveSortMode();
+function getPresets(path) {
+  const k = path != null ? path : customOrderKey();
+  return App.customPresets?.[k] || [];
 }
+function getPreset(id, path) {
+  return getPresets(path).find(p => p.id === id) || null;
+}
+function getActivePresetId() {
+  const m = App.folderSortModes?.[customOrderKey()];
+  return (m && m.startsWith('preset:')) ? m.slice(7) : null;
+}
+function getActivePreset() {
+  const id = getActivePresetId();
+  return id ? getPreset(id) : null;
+}
+function genPresetId() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function populateSortSelect() {
+  const sel = $('#sort-select');
+  if (!sel) return;
+  const presets = getPresets();
+  const hasDraft = !!App.customOrders?.[customOrderKey()]?.length;
+  let html = '';
+  html += '<option value="name_asc">名前 ↑</option>';
+  html += '<option value="name_desc">名前 ↓</option>';
+  html += '<option value="date_desc">更新日 ↓</option>';
+  html += '<option value="date_asc">更新日 ↑</option>';
+  html += '<option value="size_desc">サイズ ↓</option>';
+  html += '<option value="size_asc">サイズ ↑</option>';
+  if (presets.length || hasDraft) {
+    html += '<optgroup label="カスタム順">';
+    for (const p of presets) {
+      html += `<option value="preset:${escHtml(p.id)}">${escHtml(p.name)}</option>`;
+    }
+    if (hasDraft) html += '<option value="custom">カスタム（未保存）</option>';
+    html += '</optgroup>';
+  }
+  sel.innerHTML = html;
+  const mode = getEffectiveSortMode();
+  // Guard: selected mode might refer to a missing preset
+  const hasMode = Array.from(sel.options).some(o => o.value === mode);
+  sel.value = hasMode ? mode : (App.sortMode || 'name_asc');
+}
+function updateSortSelectUI() { populateSortSelect(); }
 function saveCustomOrder() {
   const names = App.entries.map(e => e.name);
   if (!App.customOrders) App.customOrders = {};
   App.customOrders[customOrderKey()] = names;
   saveSetting('customOrders', App.customOrders);
+  // If a preset is currently active, keep it in sync with the working order
+  const preset = getActivePreset();
+  if (preset) {
+    preset.order = names;
+    saveSetting('customPresets', App.customPresets);
+  }
 }
 function resetCustomOrder() {
   const k = customOrderKey();
@@ -1899,17 +1969,77 @@ function resetCustomOrder() {
   renderGrid(App.navGen);
   toast('カスタム順をリセットしました');
 }
-function applyCustomOrder(entries) {
-  const saved = App.customOrders?.[customOrderKey()];
-  if (!saved || !saved.length) return entries;
+function applySavedOrder(entries, savedNames) {
+  if (!savedNames || !savedNames.length) return entries;
   const byName = new Map();
   entries.forEach(e => byName.set(e.name, e));
   const ordered = [], used = new Set();
-  for (const name of saved) {
+  for (const name of savedNames) {
     if (byName.has(name) && !used.has(name)) { ordered.push(byName.get(name)); used.add(name); }
   }
   for (const e of entries) { if (!used.has(e.name)) ordered.push(e); }
   return ordered;
+}
+function applyCustomOrder(entries) {
+  return applySavedOrder(entries, App.customOrders?.[customOrderKey()]);
+}
+function applyModeOrder(entries) {
+  const mode = getEffectiveSortMode();
+  if (mode === 'custom') return applyCustomOrder(entries);
+  if (mode.startsWith('preset:')) {
+    const p = getPreset(mode.slice(7));
+    if (p) return applySavedOrder(entries, p.order);
+  }
+  return entries;
+}
+
+// ── Preset management ──
+function saveAsNewPreset() {
+  const name = prompt('プリセット名:');
+  if (name == null) return;
+  const trimmed = name.trim();
+  if (!trimmed) { toast('名前を入力してください'); return; }
+  const k = customOrderKey();
+  if (!App.customPresets) App.customPresets = {};
+  if (!App.customPresets[k]) App.customPresets[k] = [];
+  if (App.customPresets[k].some(p => p.name === trimmed)) { toast(`「${trimmed}」は既に存在します`); return; }
+  const id = genPresetId();
+  const order = App.entries.map(e => e.name);
+  App.customPresets[k].push({ id, name: trimmed, order });
+  saveSetting('customPresets', App.customPresets);
+  if (!App.customOrders) App.customOrders = {};
+  App.customOrders[k] = [...order];
+  saveSetting('customOrders', App.customOrders);
+  setFolderSortMode('preset:' + id);
+  toast(`プリセット「${trimmed}」を登録しました`);
+}
+
+function renameActivePreset() {
+  const preset = getActivePreset();
+  if (!preset) { toast('プリセットが選択されていません'); return; }
+  const newName = prompt('新しい名前:', preset.name);
+  if (newName == null) return;
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed === preset.name) return;
+  const k = customOrderKey();
+  if ((App.customPresets?.[k] || []).some(p => p.name === trimmed && p.id !== preset.id)) { toast(`「${trimmed}」は既に存在します`); return; }
+  preset.name = trimmed;
+  saveSetting('customPresets', App.customPresets);
+  updateSortSelectUI();
+  toast('プリセット名を変更しました');
+}
+
+function deleteActivePreset() {
+  const preset = getActivePreset();
+  if (!preset) { toast('プリセットが選択されていません'); return; }
+  if (!confirm(`プリセット「${preset.name}」を削除しますか？`)) return;
+  const k = customOrderKey();
+  App.customPresets[k] = (App.customPresets[k] || []).filter(p => p.id !== preset.id);
+  if (!App.customPresets[k].length) delete App.customPresets[k];
+  saveSetting('customPresets', App.customPresets);
+  // Fall back to unsaved custom order (preserves current display)
+  setFolderSortMode('custom');
+  toast(`プリセット「${preset.name}」を削除しました`);
 }
 
 // ── File Viewer (Image / Video / Audio / Text / PDF) ──
@@ -2022,20 +2152,31 @@ function setupEvents() {
   $('#btn-sidebar').onclick = () => { const sb = $('#sidebar'), mob = innerWidth <= 700; if (mob) sb.classList.toggle('mobile-open'); else { sb.classList.toggle('hidden'); saveSetting('sidebarHidden', sb.classList.contains('hidden')); } };
   $('#btn-select-all').onclick = selectAll;
   $('#btn-undo').onclick = undoLast;
+  $('#btn-save-preset').onclick = saveAsNewPreset;
 
 
   $('#breadcrumb').addEventListener('click', e => { const item = e.target.closest('.bc-item'); if (item && !item.classList.contains('current')) navigate(item.dataset.path); });
   $('#sort-select').onchange = e => {
     const mode = e.target.value;
-    // Record per-folder sort preference (keeps saved custom order intact)
+    // Record per-folder sort preference (keeps saved custom orders/presets intact)
     if (!App.folderSortModes) App.folderSortModes = {};
     App.folderSortModes[customOrderKey()] = mode;
     saveSetting('folderSortModes', App.folderSortModes);
-    // Update global default for new folders (unless 'custom', which is per-folder only)
-    if (mode !== 'custom') { App.sortMode = mode; saveSetting('sortMode', App.sortMode); }
+    // Standard modes update the global default; custom/preset are per-folder only
+    const isCustomLike = (mode === 'custom' || mode.startsWith('preset:'));
+    if (!isCustomLike) { App.sortMode = mode; saveSetting('sortMode', App.sortMode); }
+    // Load preset order into working buffer so further edits start from it
+    if (mode.startsWith('preset:')) {
+      const p = getPreset(mode.slice(7));
+      if (p) {
+        if (!App.customOrders) App.customOrders = {};
+        App.customOrders[customOrderKey()] = [...p.order];
+        saveSetting('customOrders', App.customOrders);
+      }
+    }
     // Re-sort
     App.entries = sortEntries(App.entries);
-    if (mode === 'custom') App.entries = applyCustomOrder(App.entries);
+    App.entries = applyModeOrder(App.entries);
     renderGrid(App.navGen);
   };
   $('#thumb-slider').oninput = e => { App.thumbSize = parseInt(e.target.value); document.documentElement.style.setProperty('--thumb-size', App.thumbSize); localStorage.setItem('dbxfiler_thumbSize', App.thumbSize); };
