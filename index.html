@@ -455,6 +455,7 @@ body {
       <option value="date_asc">更新日 ↑</option>
       <option value="size_desc">サイズ ↓</option>
       <option value="size_asc">サイズ ↑</option>
+      <option value="custom">カスタム順</option>
     </select>
     <div class="tb-spacer"></div>
     <input type="range" id="thumb-slider" min="80" max="320" value="160" title="サムネサイズ">
@@ -543,7 +544,8 @@ const App = {
   prefetchCache: {}, navGen: 0,
   // Selection & reorder
   selected: new Set(),
-  customOrders: {},    // { path: [names] }
+  customOrders: {},    // { path: [names] } — saved ordering per folder
+  folderSortModes: {}, // { path: mode } — per-folder sort mode override ('custom' or any standard mode)
   undoStack: [],  // [{type, label, ops:[{from,to}]}]
 };
 
@@ -652,6 +654,7 @@ async function loadSettings() {
     lastPath: await IDB.get('settings','lastPath'),
     sidebarHidden: await IDB.get('settings','sidebarHidden'),
     customOrders: await IDB.get('settings','customOrders'),
+    folderSortModes: await IDB.get('settings','folderSortModes'),
   };
 
   let merged;
@@ -668,6 +671,7 @@ async function loadSettings() {
       lastPath: cloud.lastPath ?? local.lastPath ?? '',
       sidebarHidden: cloud.sidebarHidden ?? local.sidebarHidden ?? false,
       customOrders: { ...(local.customOrders || {}), ...(cloud.customOrders || {}) },
+      folderSortModes: { ...(local.folderSortModes || {}), ...(cloud.folderSortModes || {}) },
     };
   } else {
     // No cloud file — use local and push to cloud immediately
@@ -677,9 +681,15 @@ async function loadSettings() {
       lastPath: local.lastPath ?? '',
       sidebarHidden: local.sidebarHidden ?? false,
       customOrders: local.customOrders ?? {},
+      folderSortModes: local.folderSortModes ?? {},
     };
     // Push to cloud so other devices can pick it up
     saveSettingsNow(merged);
+  }
+
+  // Backward compat: any saved custom order with no mode → assume 'custom'
+  for (const k of Object.keys(merged.customOrders || {})) {
+    if (!merged.folderSortModes[k]) merged.folderSortModes[k] = 'custom';
   }
 
   // Write back to IDB
@@ -688,6 +698,7 @@ async function loadSettings() {
   IDB.put('settings','lastPath', merged.lastPath);
   IDB.put('settings','sidebarHidden', merged.sidebarHidden);
   IDB.put('settings','customOrders', merged.customOrders);
+  IDB.put('settings','folderSortModes', merged.folderSortModes);
 
   return merged;
 }
@@ -699,6 +710,7 @@ async function saveSettingsNow(data) {
       favorites: App.favorites, lastPath: App.currentPath,
       sidebarHidden: $('#sidebar').classList.contains('hidden'),
       customOrders: App.customOrders || {},
+      folderSortModes: App.folderSortModes || {},
     };
     await App.storage.save(SETTINGS_PATH, JSON.stringify(d, null, 2));
   } catch(e) { console.warn('Settings sync failed:', e); }
@@ -716,8 +728,8 @@ function saveSettingsImmediate() {
 
 function saveSetting(key, value) {
   IDB.put('settings', key, value);
-  // Favorites and customOrders save immediately, others debounced
-  if (key === 'favorites' || key === 'customOrders') saveSettingsImmediate();
+  // Favorites, customOrders, folderSortModes save immediately, others debounced
+  if (key === 'favorites' || key === 'customOrders' || key === 'folderSortModes') saveSettingsImmediate();
   else saveSettings();
 }
 
@@ -740,6 +752,12 @@ async function init() {
   if (localFavs) App.favorites = localFavs;
   const localOrders = await IDB.get('settings','customOrders');
   App.customOrders = localOrders || {};
+  const localModes = await IDB.get('settings','folderSortModes');
+  App.folderSortModes = localModes || {};
+  // Backward compat: any saved custom order with no mode → assume 'custom'
+  for (const k of Object.keys(App.customOrders)) {
+    if (!App.folderSortModes[k]) App.folderSortModes[k] = 'custom';
+  }
   const localSh = await IDB.get('settings','sidebarHidden');
   if (localSh) $('#sidebar').classList.add('hidden');
 
@@ -753,6 +771,7 @@ async function init() {
     App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
     App.favorites = s.favorites;
     App.customOrders = s.customOrders || {};
+    App.folderSortModes = s.folderSortModes || {};
     if (s.sidebarHidden) $('#sidebar').classList.add('hidden'); else $('#sidebar').classList.remove('hidden');
     renderFavorites(); loadTree();
     await navigate(pathFromHash() ?? s.lastPath ?? '', true);
@@ -764,6 +783,7 @@ async function init() {
     App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
     App.favorites = s.favorites;
     App.customOrders = s.customOrders || {};
+    App.folderSortModes = s.folderSortModes || {};
     if (s.sidebarHidden) $('#sidebar').classList.add('hidden'); else $('#sidebar').classList.remove('hidden');
     renderFavorites(); loadTree();
     navigate(pathFromHash() ?? s.lastPath ?? '', true);
@@ -783,7 +803,7 @@ async function navigate(path, replace) {
   saveSetting('lastPath', path);
   replace ? replaceHash(path) : pushHash(path);
   $('#btn-up').classList.toggle('disabled', !path);
-  renderBreadcrumb(); renderFavorites(); updateTreeActive();
+  renderBreadcrumb(); renderFavorites(); updateTreeActive(); updateSortSelectUI();
   await loadFolder(path);
 }
 
@@ -794,7 +814,7 @@ async function loadFolder(path) {
     const entries = await App.storage.list(path || '');
     if (gen !== App.navGen) return;
     App.entries = sortEntries(entries.filter(e => e.name !== '.filer-trash'));
-    App.entries = applyCustomOrder(App.entries);
+    if (getEffectiveSortMode() === 'custom') App.entries = applyCustomOrder(App.entries);
     App.selected.clear(); updateSelBadge();
     renderGrid(gen);
   } catch(e) { if (gen === App.navGen) grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">⚠</div><div>読み込みエラー</div></div>'; }
@@ -979,6 +999,10 @@ function showCtxEmpty(x, y) {
     eh += `<div class="ctx-item" data-action="paste"><span class="ctx-icon">📋</span>ペースト（${App.fileClip.length}件）</div><div class="ctx-sep"></div>`;
   }
   eh += '<div class="ctx-item" data-action="new-folder"><span class="ctx-icon">📁</span>新規フォルダ</div>';
+  if (App.customOrders?.[customOrderKey()] || App.folderSortModes?.[customOrderKey()]) {
+    eh += '<div class="ctx-sep"></div>';
+    eh += '<div class="ctx-item" data-action="reset-order"><span class="ctx-icon">↺</span>カスタム順をリセット</div>';
+  }
   m.innerHTML = eh;
   m.style.left = Math.min(x, innerWidth - 200) + 'px'; m.style.top = Math.min(y, innerHeight - 200) + 'px'; m.classList.add('show');
 }
@@ -1018,6 +1042,7 @@ async function doCtx(action) {
   else if (action === 'download') await downloadEntry(entry);
   else if (action === 'info') showInfo(entry);
   else if (action === 'new-folder') await createNewFolder();
+  else if (action === 'reset-order') resetCustomOrder();
   else if (action.startsWith('tree-')) await doCtxTree(action, entry);
 }
 
@@ -1839,16 +1864,40 @@ function reorderEntries(dropIdx, before) {
   App.selected.clear();
   dragged.forEach(d => { const ni = App.entries.indexOf(d); if (ni >= 0) App.selected.add(ni); });
   saveCustomOrder();
+  setFolderSortMode('custom');
   renderGrid(App.navGen);
 }
 
 // ── Custom order persistence ──
 function customOrderKey() { return App.currentPath || '/'; }
+function getEffectiveSortMode() {
+  return App.folderSortModes?.[customOrderKey()] || App.sortMode;
+}
+function setFolderSortMode(mode) {
+  if (!App.folderSortModes) App.folderSortModes = {};
+  App.folderSortModes[customOrderKey()] = mode;
+  saveSetting('folderSortModes', App.folderSortModes);
+  const sel = $('#sort-select');
+  if (sel && sel.value !== mode) sel.value = mode;
+}
+function updateSortSelectUI() {
+  const sel = $('#sort-select');
+  if (sel) sel.value = getEffectiveSortMode();
+}
 function saveCustomOrder() {
   const names = App.entries.map(e => e.name);
   if (!App.customOrders) App.customOrders = {};
   App.customOrders[customOrderKey()] = names;
   saveSetting('customOrders', App.customOrders);
+}
+function resetCustomOrder() {
+  const k = customOrderKey();
+  if (App.customOrders && App.customOrders[k]) { delete App.customOrders[k]; saveSetting('customOrders', App.customOrders); }
+  if (App.folderSortModes && App.folderSortModes[k]) { delete App.folderSortModes[k]; saveSetting('folderSortModes', App.folderSortModes); }
+  updateSortSelectUI();
+  App.entries = sortEntries(App.entries);
+  renderGrid(App.navGen);
+  toast('カスタム順をリセットしました');
 }
 function applyCustomOrder(entries) {
   const saved = App.customOrders?.[customOrderKey()];
@@ -1976,7 +2025,19 @@ function setupEvents() {
 
 
   $('#breadcrumb').addEventListener('click', e => { const item = e.target.closest('.bc-item'); if (item && !item.classList.contains('current')) navigate(item.dataset.path); });
-  $('#sort-select').onchange = e => { App.sortMode = e.target.value; saveSetting('sortMode', App.sortMode); if (App.customOrders) { delete App.customOrders[customOrderKey()]; saveSetting('customOrders', App.customOrders); } App.entries = sortEntries(App.entries); renderGrid(App.navGen); };
+  $('#sort-select').onchange = e => {
+    const mode = e.target.value;
+    // Record per-folder sort preference (keeps saved custom order intact)
+    if (!App.folderSortModes) App.folderSortModes = {};
+    App.folderSortModes[customOrderKey()] = mode;
+    saveSetting('folderSortModes', App.folderSortModes);
+    // Update global default for new folders (unless 'custom', which is per-folder only)
+    if (mode !== 'custom') { App.sortMode = mode; saveSetting('sortMode', App.sortMode); }
+    // Re-sort
+    App.entries = sortEntries(App.entries);
+    if (mode === 'custom') App.entries = applyCustomOrder(App.entries);
+    renderGrid(App.navGen);
+  };
   $('#thumb-slider').oninput = e => { App.thumbSize = parseInt(e.target.value); document.documentElement.style.setProperty('--thumb-size', App.thumbSize); localStorage.setItem('dbxfiler_thumbSize', App.thumbSize); };
   $('#btn-add-fav').onclick = () => addFavorite(App.currentPath);
   $('#fav-list').addEventListener('click', e => { const rm = e.target.closest('.fav-remove'); if (rm) { removeFavorite(parseInt(rm.dataset.index)); return; } const item = e.target.closest('.fav-item'); if (item) { navigate(item.dataset.path); $('#sidebar').classList.remove('mobile-open'); } });
@@ -2316,7 +2377,7 @@ function setupEvents() {
   $('#viewer').addEventListener('wheel', e => { if (!App.viewerVisible||wCD) return; e.preventDefault(); wCD=true; setTimeout(()=>wCD=false,200); e.deltaY>0 ? vNext() : vPrev(); }, { passive: false });
 
   // Popstate
-  window.addEventListener('popstate', () => { if (App.viewerVisible) { closeViewer(); return; } const p = pathFromHash() ?? ''; if (p !== App.currentPath) { App.currentPath = p; saveSetting('lastPath',p); $('#btn-up').classList.toggle('disabled',!p); renderBreadcrumb(); renderFavorites(); updateTreeActive(); loadFolder(p); } });
+  window.addEventListener('popstate', () => { if (App.viewerVisible) { closeViewer(); return; } const p = pathFromHash() ?? ''; if (p !== App.currentPath) { App.currentPath = p; saveSetting('lastPath',p); $('#btn-up').classList.toggle('disabled',!p); renderBreadcrumb(); renderFavorites(); updateTreeActive(); updateSortSelectUI(); loadFolder(p); } });
 
   // D&D (one-time)
   initDragReorder();
