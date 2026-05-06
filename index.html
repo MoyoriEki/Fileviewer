@@ -538,7 +538,7 @@ body {
 'use strict';
 
 const App = {
-  storage: null, currentPath: '', entries: [], favorites: [],
+  storage: null, currentPath: '', entries: [], favorites: [], favoritesUpdatedAt: 0,
   thumbCache: {}, sortMode: 'name_asc', thumbSize: 160,
   viewerImages: [], viewerIndex: 0, viewerVisible: false, toolbarTimer: null, fileClip: [],
   prefetchCache: {}, navGen: 0,
@@ -652,6 +652,7 @@ async function loadSettings() {
   const local = {
     sortMode: await IDB.get('settings','sortMode'),
     favorites: await IDB.get('settings','favorites'),
+    favoritesUpdatedAt: await IDB.get('settings','favoritesUpdatedAt') || 0,
     lastPath: await IDB.get('settings','lastPath'),
     sidebarHidden: await IDB.get('settings','sidebarHidden'),
     customOrders: await IDB.get('settings','customOrders'),
@@ -661,26 +662,30 @@ async function loadSettings() {
 
   let merged;
   if (cloud) {
-    // Cloud exists — use it, but merge favorites (union by path)
-    const cloudFavs = cloud.favorites || [];
-    const localFavs = local.favorites || [];
-    const favMap = new Map();
-    for (const f of localFavs) favMap.set(f.path, f);
-    for (const f of cloudFavs) favMap.set(f.path, f); // cloud wins on conflict
+    // Cloud exists — for favorites, use whichever side has the newer timestamp
+    // (last-write-wins). This preserves deletions even if cloud upload was racing
+    // or failed, and still lets cross-device updates propagate.
+    const localFavTs = local.favoritesUpdatedAt || 0;
+    const cloudFavTs = cloud.favoritesUpdatedAt || 0;
+    const favs = (localFavTs > cloudFavTs ? local.favorites : cloud.favorites) ?? local.favorites ?? cloud.favorites ?? [];
     merged = {
       sortMode: cloud.sortMode ?? local.sortMode ?? 'name_asc',
-      favorites: [...favMap.values()],
+      favorites: favs,
+      favoritesUpdatedAt: Math.max(localFavTs, cloudFavTs),
       lastPath: cloud.lastPath ?? local.lastPath ?? '',
       sidebarHidden: cloud.sidebarHidden ?? local.sidebarHidden ?? false,
       customOrders: { ...(local.customOrders || {}), ...(cloud.customOrders || {}) },
       customPresets: { ...(local.customPresets || {}), ...(cloud.customPresets || {}) },
       folderSortModes: { ...(local.folderSortModes || {}), ...(cloud.folderSortModes || {}) },
     };
+    // If local is newer than cloud, push the local state up so the cloud catches up.
+    if (localFavTs > cloudFavTs) saveSettingsNow(merged);
   } else {
     // No cloud file — use local and push to cloud immediately
     merged = {
       sortMode: local.sortMode ?? 'name_asc',
       favorites: local.favorites ?? [],
+      favoritesUpdatedAt: local.favoritesUpdatedAt || 0,
       lastPath: local.lastPath ?? '',
       sidebarHidden: local.sidebarHidden ?? false,
       customOrders: local.customOrders ?? {},
@@ -699,6 +704,7 @@ async function loadSettings() {
   // Write back to IDB
   IDB.put('settings','sortMode', merged.sortMode);
   IDB.put('settings','favorites', merged.favorites);
+  IDB.put('settings','favoritesUpdatedAt', merged.favoritesUpdatedAt || 0);
   IDB.put('settings','lastPath', merged.lastPath);
   IDB.put('settings','sidebarHidden', merged.sidebarHidden);
   IDB.put('settings','customOrders', merged.customOrders);
@@ -712,7 +718,9 @@ async function saveSettingsNow(data) {
   try {
     const d = data || {
       sortMode: App.sortMode,
-      favorites: App.favorites, lastPath: App.currentPath,
+      favorites: App.favorites,
+      favoritesUpdatedAt: App.favoritesUpdatedAt || 0,
+      lastPath: App.currentPath,
       sidebarHidden: $('#sidebar').classList.contains('hidden'),
       customOrders: App.customOrders || {},
       customPresets: App.customPresets || {},
@@ -734,6 +742,10 @@ function saveSettingsImmediate() {
 
 function saveSetting(key, value) {
   IDB.put('settings', key, value);
+  if (key === 'favorites') {
+    App.favoritesUpdatedAt = Date.now();
+    IDB.put('settings', 'favoritesUpdatedAt', App.favoritesUpdatedAt);
+  }
   // Favorites, customOrders, customPresets, folderSortModes save immediately; others debounced
   if (key === 'favorites' || key === 'customOrders' || key === 'customPresets' || key === 'folderSortModes') saveSettingsImmediate();
   else saveSettings();
@@ -756,6 +768,8 @@ async function init() {
   if (localSort) { App.sortMode = localSort; $('#sort-select').value = localSort; }
   const localFavs = await IDB.get('settings','favorites');
   if (localFavs) App.favorites = localFavs;
+  const localFavTs = await IDB.get('settings','favoritesUpdatedAt');
+  if (localFavTs) App.favoritesUpdatedAt = localFavTs;
   const localOrders = await IDB.get('settings','customOrders');
   App.customOrders = localOrders || {};
   const localPresets = await IDB.get('settings','customPresets');
@@ -778,6 +792,7 @@ async function init() {
     const s = await loadSettings();
     App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
     App.favorites = s.favorites;
+    App.favoritesUpdatedAt = s.favoritesUpdatedAt || 0;
     App.customOrders = s.customOrders || {};
     App.customPresets = s.customPresets || {};
     App.folderSortModes = s.folderSortModes || {};
@@ -791,6 +806,7 @@ async function init() {
     const s = await loadSettings();
     App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
     App.favorites = s.favorites;
+    App.favoritesUpdatedAt = s.favoritesUpdatedAt || 0;
     App.customOrders = s.customOrders || {};
     App.customPresets = s.customPresets || {};
     App.folderSortModes = s.folderSortModes || {};
