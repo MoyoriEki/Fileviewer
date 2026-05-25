@@ -547,6 +547,7 @@ const App = {
   customOrders: {},    // { path: [names] } — current working (unsaved) custom order per folder
   customPresets: {},   // { path: [{id, name, order:[names]}] } — named saved custom-order presets
   folderSortModes: {}, // { path: mode } — per-folder sort mode ('custom' | 'preset:<id>' | standard mode)
+  foldersUpdatedAt: {},// { path: ts } — last-edit timestamp per folder for cross-device merge (tombstone-aware)
   undoStack: [],  // [{type, label, ops:[{from,to}]}]
 };
 
@@ -642,6 +643,56 @@ function tqRun(fn) { return new Promise((res, rej) => { const exec = () => { TQ.
 const SETTINGS_PATH = 'DropboxFiler-settings.json';
 let settingsSaveTimer = null;
 
+// Merge two settings snapshots without losing data made concurrently on another
+// device. Favorites use whole-value last-write-wins (favoritesUpdatedAt). The
+// per-folder custom-order maps use a per-path timestamp (foldersUpdatedAt): the
+// side with the newer timestamp wins for that folder, and a folder that is
+// absent on the newer side is treated as deleted (tombstone) so resets/deletes
+// propagate. Folders edited on only one side are always preserved.
+function mergeSettings(local, cloud) {
+  local = local || {}; cloud = cloud || {};
+  const lFavTs = local.favoritesUpdatedAt || 0, cFavTs = cloud.favoritesUpdatedAt || 0;
+  const favs = (lFavTs > cFavTs ? local.favorites : cloud.favorites) ?? local.favorites ?? cloud.favorites ?? [];
+
+  const lTs = local.foldersUpdatedAt || {}, cTs = cloud.foldersUpdatedAt || {};
+  const allPaths = new Set([
+    ...Object.keys(local.customOrders || {}), ...Object.keys(cloud.customOrders || {}),
+    ...Object.keys(local.customPresets || {}), ...Object.keys(cloud.customPresets || {}),
+    ...Object.keys(local.folderSortModes || {}), ...Object.keys(cloud.folderSortModes || {}),
+    ...Object.keys(lTs), ...Object.keys(cTs),
+  ]);
+  // Pick the authoritative side per folder, then copy that side's value for each map.
+  const pick = (lm, cm, p, side) => {
+    lm = lm || {}; cm = cm || {};
+    if (side === 'local') { if (p in lm) return [true, lm[p]]; }
+    else if (side === 'cloud') { if (p in cm) return [true, cm[p]]; }
+    else { // tie: prefer whichever side has the value, local first
+      if (p in lm) return [true, lm[p]];
+      if (p in cm) return [true, cm[p]];
+    }
+    return [false, undefined];
+  };
+  const customOrders = {}, customPresets = {}, folderSortModes = {}, foldersUpdatedAt = {};
+  for (const p of allPaths) {
+    const lt = lTs[p] || 0, ct = cTs[p] || 0;
+    const side = lt > ct ? 'local' : (ct > lt ? 'cloud' : 'tie');
+    let r;
+    if ((r = pick(local.customOrders, cloud.customOrders, p, side))[0]) customOrders[p] = r[1];
+    if ((r = pick(local.customPresets, cloud.customPresets, p, side))[0]) customPresets[p] = r[1];
+    if ((r = pick(local.folderSortModes, cloud.folderSortModes, p, side))[0]) folderSortModes[p] = r[1];
+    if (lt || ct) foldersUpdatedAt[p] = Math.max(lt, ct);
+  }
+
+  return {
+    sortMode: cloud.sortMode ?? local.sortMode ?? 'name_asc',
+    favorites: favs,
+    favoritesUpdatedAt: Math.max(lFavTs, cFavTs),
+    lastPath: cloud.lastPath ?? local.lastPath ?? '',
+    sidebarHidden: cloud.sidebarHidden ?? local.sidebarHidden ?? false,
+    customOrders, customPresets, folderSortModes, foldersUpdatedAt,
+  };
+}
+
 async function loadSettings() {
   let cloud = null;
   try {
@@ -658,43 +709,14 @@ async function loadSettings() {
     customOrders: await IDB.get('settings','customOrders'),
     customPresets: await IDB.get('settings','customPresets'),
     folderSortModes: await IDB.get('settings','folderSortModes'),
+    foldersUpdatedAt: await IDB.get('settings','foldersUpdatedAt') || {},
   };
 
-  let merged;
-  if (cloud) {
-    // Cloud exists — for favorites, use whichever side has the newer timestamp
-    // (last-write-wins). This preserves deletions even if cloud upload was racing
-    // or failed, and still lets cross-device updates propagate.
-    const localFavTs = local.favoritesUpdatedAt || 0;
-    const cloudFavTs = cloud.favoritesUpdatedAt || 0;
-    const favs = (localFavTs > cloudFavTs ? local.favorites : cloud.favorites) ?? local.favorites ?? cloud.favorites ?? [];
-    merged = {
-      sortMode: cloud.sortMode ?? local.sortMode ?? 'name_asc',
-      favorites: favs,
-      favoritesUpdatedAt: Math.max(localFavTs, cloudFavTs),
-      lastPath: cloud.lastPath ?? local.lastPath ?? '',
-      sidebarHidden: cloud.sidebarHidden ?? local.sidebarHidden ?? false,
-      customOrders: { ...(local.customOrders || {}), ...(cloud.customOrders || {}) },
-      customPresets: { ...(local.customPresets || {}), ...(cloud.customPresets || {}) },
-      folderSortModes: { ...(local.folderSortModes || {}), ...(cloud.folderSortModes || {}) },
-    };
-    // If local is newer than cloud, push the local state up so the cloud catches up.
-    if (localFavTs > cloudFavTs) saveSettingsNow(merged);
-  } else {
-    // No cloud file — use local and push to cloud immediately
-    merged = {
-      sortMode: local.sortMode ?? 'name_asc',
-      favorites: local.favorites ?? [],
-      favoritesUpdatedAt: local.favoritesUpdatedAt || 0,
-      lastPath: local.lastPath ?? '',
-      sidebarHidden: local.sidebarHidden ?? false,
-      customOrders: local.customOrders ?? {},
-      customPresets: local.customPresets ?? {},
-      folderSortModes: local.folderSortModes ?? {},
-    };
-    // Push to cloud so other devices can pick it up
-    saveSettingsNow(merged);
-  }
+  // Merge local + cloud with per-folder last-write-wins, then push the merged
+  // union back to the cloud so neither side loses data. Always pushing keeps the
+  // cloud as the union even when this device made changes while offline.
+  const merged = mergeSettings(local, cloud);
+  saveSettingsNow(merged);
 
   // Backward compat: any saved custom order with no mode → assume 'custom'
   for (const k of Object.keys(merged.customOrders || {})) {
@@ -710,22 +732,55 @@ async function loadSettings() {
   IDB.put('settings','customOrders', merged.customOrders);
   IDB.put('settings','customPresets', merged.customPresets);
   IDB.put('settings','folderSortModes', merged.folderSortModes);
+  IDB.put('settings','foldersUpdatedAt', merged.foldersUpdatedAt);
 
   return merged;
 }
 
 async function saveSettingsNow(data) {
   try {
-    const d = data || {
-      sortMode: App.sortMode,
-      favorites: App.favorites,
-      favoritesUpdatedAt: App.favoritesUpdatedAt || 0,
-      lastPath: App.currentPath,
-      sidebarHidden: $('#sidebar').classList.contains('hidden'),
-      customOrders: App.customOrders || {},
-      customPresets: App.customPresets || {},
-      folderSortModes: App.folderSortModes || {},
-    };
+    let d = data;
+    if (!d) {
+      // Read-modify-write: re-fetch the cloud copy and merge our in-memory state
+      // into it so a save here can't clobber changes another device made to a
+      // different folder (or newer favorites) since we last loaded.
+      let cloud = null;
+      try { cloud = JSON.parse(await App.storage.load(SETTINGS_PATH)); } catch(_) {}
+      // Snapshot App AFTER the load: any synchronous saveSetting calls that
+      // triggered overlapping saves have all applied to App by now, so every
+      // racing save writes the same complete state instead of a partial one.
+      const localState = {
+        sortMode: App.sortMode,
+        favorites: App.favorites,
+        favoritesUpdatedAt: App.favoritesUpdatedAt || 0,
+        lastPath: App.currentPath,
+        sidebarHidden: $('#sidebar').classList.contains('hidden'),
+        customOrders: App.customOrders || {},
+        customPresets: App.customPresets || {},
+        folderSortModes: App.folderSortModes || {},
+        foldersUpdatedAt: App.foldersUpdatedAt || {},
+      };
+      d = cloud ? mergeSettings(localState, cloud) : localState;
+      // Scalars (sortMode/lastPath/sidebarHidden) have no timestamp, so on a save
+      // this device's current value is the intended one — keep it over the cloud's.
+      d.sortMode = localState.sortMode;
+      d.lastPath = localState.lastPath;
+      d.sidebarHidden = localState.sidebarHidden;
+      // Reflect the merged result locally so App/IDB stay in sync with the cloud
+      // and the next save merges against an up-to-date base.
+      App.favorites = d.favorites;
+      App.favoritesUpdatedAt = d.favoritesUpdatedAt || 0;
+      App.customOrders = d.customOrders;
+      App.customPresets = d.customPresets;
+      App.folderSortModes = d.folderSortModes;
+      App.foldersUpdatedAt = d.foldersUpdatedAt;
+      IDB.put('settings','favorites', d.favorites);
+      IDB.put('settings','favoritesUpdatedAt', d.favoritesUpdatedAt || 0);
+      IDB.put('settings','customOrders', d.customOrders);
+      IDB.put('settings','customPresets', d.customPresets);
+      IDB.put('settings','folderSortModes', d.folderSortModes);
+      IDB.put('settings','foldersUpdatedAt', d.foldersUpdatedAt);
+    }
     await App.storage.save(SETTINGS_PATH, JSON.stringify(d, null, 2));
   } catch(e) { console.warn('Settings sync failed:', e); }
 }
@@ -745,6 +800,12 @@ function saveSetting(key, value) {
   if (key === 'favorites') {
     App.favoritesUpdatedAt = Date.now();
     IDB.put('settings', 'favoritesUpdatedAt', App.favoritesUpdatedAt);
+  }
+  // Stamp the edited folder so cross-device merges can do per-folder last-write-wins.
+  if (key === 'customOrders' || key === 'customPresets' || key === 'folderSortModes') {
+    if (!App.foldersUpdatedAt) App.foldersUpdatedAt = {};
+    App.foldersUpdatedAt[customOrderKey()] = Date.now();
+    IDB.put('settings', 'foldersUpdatedAt', App.foldersUpdatedAt);
   }
   // Favorites, customOrders, customPresets, folderSortModes save immediately; others debounced
   if (key === 'favorites' || key === 'customOrders' || key === 'customPresets' || key === 'folderSortModes') saveSettingsImmediate();
@@ -776,6 +837,7 @@ async function init() {
   App.customPresets = localPresets || {};
   const localModes = await IDB.get('settings','folderSortModes');
   App.folderSortModes = localModes || {};
+  App.foldersUpdatedAt = await IDB.get('settings','foldersUpdatedAt') || {};
   // Backward compat: any saved custom order with no mode → assume 'custom'
   for (const k of Object.keys(App.customOrders)) {
     if (!App.folderSortModes[k]) App.folderSortModes[k] = 'custom';
@@ -796,6 +858,7 @@ async function init() {
     App.customOrders = s.customOrders || {};
     App.customPresets = s.customPresets || {};
     App.folderSortModes = s.folderSortModes || {};
+    App.foldersUpdatedAt = s.foldersUpdatedAt || {};
     if (s.sidebarHidden) $('#sidebar').classList.add('hidden'); else $('#sidebar').classList.remove('hidden');
     renderFavorites(); loadTree();
     await navigate(pathFromHash() ?? s.lastPath ?? '', true);
@@ -810,6 +873,7 @@ async function init() {
     App.customOrders = s.customOrders || {};
     App.customPresets = s.customPresets || {};
     App.folderSortModes = s.folderSortModes || {};
+    App.foldersUpdatedAt = s.foldersUpdatedAt || {};
     if (s.sidebarHidden) $('#sidebar').classList.add('hidden'); else $('#sidebar').classList.remove('hidden');
     renderFavorites(); loadTree();
     navigate(pathFromHash() ?? s.lastPath ?? '', true);
