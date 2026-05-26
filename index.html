@@ -1415,13 +1415,33 @@ async function createNewFolder() {
 const Paint = {
   canvas: null, ctx: null, drawing: false, pid: null, lastX: 0, lastY: 0,
   tool: 'pen', color: '#111111', size: 6, bgTransparent: false, bgColor: '#ffffff',
-  undoStack: [], redoStack: [], maxHistory: 16,
+  undoStack: [], redoStack: [], maxHistory: 16, anchorName: null,
 };
 function openNewImage() {
   if (!App.storage || !App.storage.isConnected) { toast('未接続です'); return; }
+  // Remember the selected image so the new one can be placed right after it in custom order
+  Paint.anchorName = paintAnchorName();
   hideCtx();
   $('#newimg-custom-row').style.display = $('#newimg-size').value === 'custom' ? 'flex' : 'none';
   $('#modal-newimg').classList.add('show');
+}
+function paintAnchorName() {
+  if (!App.selected || !App.selected.size) return null;
+  const last = [...App.selected].sort((a, b) => a - b).pop();
+  return App.entries[last]?.name || null;
+}
+function insertIntoCustomOrder(newName, anchorName) {
+  const mode = getEffectiveSortMode();
+  if (mode !== 'custom' && !mode.startsWith('preset:')) return;
+  const preset = getActivePreset();
+  const base = preset ? preset.order : App.customOrders?.[customOrderKey()];
+  let order = (base ? [...base] : []).filter(n => n !== newName);
+  const ai = anchorName != null ? order.indexOf(anchorName) : -1;
+  if (ai >= 0) order.splice(ai + 1, 0, newName); else order.push(newName);
+  if (!App.customOrders) App.customOrders = {};
+  App.customOrders[customOrderKey()] = order;
+  saveSetting('customOrders', App.customOrders);
+  if (preset) { preset.order = [...order]; saveSetting('customPresets', App.customPresets); }
 }
 function newImageCreate() {
   let w, h;
@@ -1573,7 +1593,9 @@ async function savePaint() {
   if (!blob) { toast('画像の生成に失敗しました'); return; }
   const btn = $('#paint-save'); btn.classList.add('disabled'); const label = btn.textContent; btn.textContent = '保存中...';
   try {
-    await uploadBinary(rel, blob);
+    const meta = await uploadBinary(rel, blob);
+    const savedName = (meta && meta.name) ? meta.name : baseName(rel);
+    insertIntoCustomOrder(savedName, Paint.anchorName);
     toast('保存しました');
     paintReset();
     loadFolder(App.currentPath);
@@ -2210,12 +2232,18 @@ function initDragReorder() {
         }
       }
 
-      tClone.remove(); tClone = null;
-      document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
-      tSrc = null; App._touchDragging = false;
-      if (tAutoScrollRAF) { cancelAnimationFrame(tAutoScrollRAF); tAutoScrollRAF = null; }
+      cancelTouchDrag();
     }
   });
+  function cancelTouchDrag() {
+    clearTimeout(tLP);
+    if (tClone) { tClone.remove(); tClone = null; }
+    document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
+    tSrc = null; App._touchDragging = false;
+    if (tAutoScrollRAF) { cancelAnimationFrame(tAutoScrollRAF); tAutoScrollRAF = null; }
+  }
+  grid.addEventListener('touchcancel', cancelTouchDrag);
+  App._cancelTouchDrag = cancelTouchDrag;
   function posC(t) { if (tClone) { tClone.style.left = (t.clientX-40)+'px'; tClone.style.top = (t.clientY-40)+'px'; } }
   function autoScrollStep() {
     if (!tClone) { tAutoScrollRAF = null; return; }
@@ -2698,10 +2726,12 @@ function setupEvents() {
   let lpT = null;
   $('#grid').addEventListener('touchstart', e => {
     const item = e.target.closest('.grid-item'); if (!item) return;
+    const cx = e.touches[0].clientX, cy = e.touches[0].clientY;
     lpT = setTimeout(() => {
+      App._cancelTouchDrag?.(); // remove any drag ghost so it doesn't linger behind the menu
       const idx = parseInt(item.dataset.index), entry = App.entries[idx]; if (!entry) return;
-      if (App.selected.has(idx) && App.selected.size > 1) showCtx(e.touches[0].clientX, e.touches[0].clientY, entry, true);
-      else { if (!App.selected.has(idx)) { App.selected.clear(); App.selected.add(idx); updateSelectionUI(); } showCtx(e.touches[0].clientX, e.touches[0].clientY, entry, false); }
+      if (App.selected.has(idx) && App.selected.size > 1) showCtx(cx, cy, entry, true);
+      else { if (!App.selected.has(idx)) { App.selected.clear(); App.selected.add(idx); updateSelectionUI(); } showCtx(cx, cy, entry, false); }
     }, 500);
   }, { passive: true });
   $('#grid').addEventListener('touchend', () => clearTimeout(lpT));
