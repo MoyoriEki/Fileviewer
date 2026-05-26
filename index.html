@@ -542,6 +542,7 @@ body {
     <button class="paint-tool active" id="paint-pen" title="ペン">✏️</button>
     <button class="paint-tool" id="paint-eraser" title="消しゴム">🩹</button>
     <button class="paint-tool" id="paint-fill" title="塗りつぶし">🪣</button>
+    <button class="paint-tool" id="paint-text" title="テキスト" style="font-weight:700">T</button>
     <div class="paint-sep"></div>
     <input type="color" id="paint-color" value="#111111" title="色">
     <input type="range" id="paint-size" min="1" max="64" value="6" title="太さ">
@@ -1474,6 +1475,24 @@ function setPaintTool(t) {
   $('#paint-pen').classList.toggle('active', t === 'pen');
   $('#paint-eraser').classList.toggle('active', t === 'eraser');
   $('#paint-fill').classList.toggle('active', t === 'fill');
+  $('#paint-text').classList.toggle('active', t === 'text');
+  $('#paint-canvas').style.cursor = t === 'text' ? 'text' : 'crosshair';
+}
+function placeText(x, y) {
+  const input = prompt('テキストを入力');
+  if (input == null) return;
+  const text = input.replace(/\r/g, '');
+  if (!text.trim()) return;
+  const ctx = Paint.ctx;
+  const fontPx = Math.max(12, Paint.size * 5);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = Paint.color;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  ctx.font = fontPx + 'px "Noto Sans JP", sans-serif';
+  const lines = text.split('\n'), lh = fontPx * 1.3;
+  lines.forEach((line, i) => ctx.fillText(line, x, y + i * lh));
+  paintSnapshot();
 }
 function paintSnapshot() {
   try {
@@ -1518,6 +1537,7 @@ function paintStroke(x0, y0, x1, y1) {
 function paintDown(e) {
   e.preventDefault();
   const { x, y } = paintPos(e);
+  if (Paint.tool === 'text') { placeText(x, y); return; }
   if (Paint.tool === 'fill') { paintFloodFill(Math.floor(x), Math.floor(y)); paintSnapshot(); return; }
   Paint.drawing = true; Paint.pid = e.pointerId; Paint.lastX = x; Paint.lastY = y;
   try { Paint.canvas.setPointerCapture(e.pointerId); } catch(_) {}
@@ -2567,10 +2587,11 @@ function setupEvents() {
   $('#paint-pen').onclick = () => setPaintTool('pen');
   $('#paint-eraser').onclick = () => setPaintTool('eraser');
   $('#paint-fill').onclick = () => setPaintTool('fill');
+  $('#paint-text').onclick = () => setPaintTool('text');
   $('#paint-undo').onclick = paintUndo;
   $('#paint-redo').onclick = paintRedo;
   $('#paint-clear').onclick = paintClear;
-  $('#paint-color').oninput = e => { Paint.color = e.target.value; if (Paint.tool !== 'fill') setPaintTool('pen'); };
+  $('#paint-color').oninput = e => { Paint.color = e.target.value; if (Paint.tool === 'eraser') setPaintTool('pen'); };
   $('#paint-size').oninput = e => { Paint.size = parseInt(e.target.value, 10); $('#paint-size-val').textContent = e.target.value; };
   const pcv = $('#paint-canvas');
   pcv.addEventListener('pointerdown', paintDown);
