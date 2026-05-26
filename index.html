@@ -542,6 +542,7 @@ body {
     <button class="paint-tool active" id="paint-pen" title="ペン">✏️</button>
     <button class="paint-tool" id="paint-eraser" title="消しゴム">🩹</button>
     <button class="paint-tool" id="paint-fill" title="塗りつぶし">🪣</button>
+    <button class="paint-tool" id="paint-text" title="テキスト" style="font-weight:700">T</button>
     <div class="paint-sep"></div>
     <input type="color" id="paint-color" value="#111111" title="色">
     <input type="range" id="paint-size" min="1" max="64" value="6" title="太さ">
@@ -1415,13 +1416,33 @@ async function createNewFolder() {
 const Paint = {
   canvas: null, ctx: null, drawing: false, pid: null, lastX: 0, lastY: 0,
   tool: 'pen', color: '#111111', size: 6, bgTransparent: false, bgColor: '#ffffff',
-  undoStack: [], redoStack: [], maxHistory: 16,
+  undoStack: [], redoStack: [], maxHistory: 16, anchorName: null,
 };
 function openNewImage() {
   if (!App.storage || !App.storage.isConnected) { toast('未接続です'); return; }
+  // Remember the selected image so the new one can be placed right after it in custom order
+  Paint.anchorName = paintAnchorName();
   hideCtx();
   $('#newimg-custom-row').style.display = $('#newimg-size').value === 'custom' ? 'flex' : 'none';
   $('#modal-newimg').classList.add('show');
+}
+function paintAnchorName() {
+  if (!App.selected || !App.selected.size) return null;
+  const last = [...App.selected].sort((a, b) => a - b).pop();
+  return App.entries[last]?.name || null;
+}
+function insertIntoCustomOrder(newName, anchorName) {
+  const mode = getEffectiveSortMode();
+  if (mode !== 'custom' && !mode.startsWith('preset:')) return;
+  const preset = getActivePreset();
+  const base = preset ? preset.order : App.customOrders?.[customOrderKey()];
+  let order = (base ? [...base] : []).filter(n => n !== newName);
+  const ai = anchorName != null ? order.indexOf(anchorName) : -1;
+  if (ai >= 0) order.splice(ai + 1, 0, newName); else order.push(newName);
+  if (!App.customOrders) App.customOrders = {};
+  App.customOrders[customOrderKey()] = order;
+  saveSetting('customOrders', App.customOrders);
+  if (preset) { preset.order = [...order]; saveSetting('customPresets', App.customPresets); }
 }
 function newImageCreate() {
   let w, h;
@@ -1454,6 +1475,24 @@ function setPaintTool(t) {
   $('#paint-pen').classList.toggle('active', t === 'pen');
   $('#paint-eraser').classList.toggle('active', t === 'eraser');
   $('#paint-fill').classList.toggle('active', t === 'fill');
+  $('#paint-text').classList.toggle('active', t === 'text');
+  $('#paint-canvas').style.cursor = t === 'text' ? 'text' : 'crosshair';
+}
+function placeText(x, y) {
+  const input = prompt('テキストを入力');
+  if (input == null) return;
+  const text = input.replace(/\r/g, '');
+  if (!text.trim()) return;
+  const ctx = Paint.ctx;
+  const fontPx = Math.max(12, Paint.size * 5);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = Paint.color;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  ctx.font = fontPx + 'px "Noto Sans JP", sans-serif';
+  const lines = text.split('\n'), lh = fontPx * 1.3;
+  lines.forEach((line, i) => ctx.fillText(line, x, y + i * lh));
+  paintSnapshot();
 }
 function paintSnapshot() {
   try {
@@ -1498,6 +1537,7 @@ function paintStroke(x0, y0, x1, y1) {
 function paintDown(e) {
   e.preventDefault();
   const { x, y } = paintPos(e);
+  if (Paint.tool === 'text') { placeText(x, y); return; }
   if (Paint.tool === 'fill') { paintFloodFill(Math.floor(x), Math.floor(y)); paintSnapshot(); return; }
   Paint.drawing = true; Paint.pid = e.pointerId; Paint.lastX = x; Paint.lastY = y;
   try { Paint.canvas.setPointerCapture(e.pointerId); } catch(_) {}
@@ -1573,7 +1613,9 @@ async function savePaint() {
   if (!blob) { toast('画像の生成に失敗しました'); return; }
   const btn = $('#paint-save'); btn.classList.add('disabled'); const label = btn.textContent; btn.textContent = '保存中...';
   try {
-    await uploadBinary(rel, blob);
+    const meta = await uploadBinary(rel, blob);
+    const savedName = (meta && meta.name) ? meta.name : baseName(rel);
+    insertIntoCustomOrder(savedName, Paint.anchorName);
     toast('保存しました');
     paintReset();
     loadFolder(App.currentPath);
@@ -2210,12 +2252,18 @@ function initDragReorder() {
         }
       }
 
-      tClone.remove(); tClone = null;
-      document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
-      tSrc = null; App._touchDragging = false;
-      if (tAutoScrollRAF) { cancelAnimationFrame(tAutoScrollRAF); tAutoScrollRAF = null; }
+      cancelTouchDrag();
     }
   });
+  function cancelTouchDrag() {
+    clearTimeout(tLP);
+    if (tClone) { tClone.remove(); tClone = null; }
+    document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
+    tSrc = null; App._touchDragging = false;
+    if (tAutoScrollRAF) { cancelAnimationFrame(tAutoScrollRAF); tAutoScrollRAF = null; }
+  }
+  grid.addEventListener('touchcancel', cancelTouchDrag);
+  App._cancelTouchDrag = cancelTouchDrag;
   function posC(t) { if (tClone) { tClone.style.left = (t.clientX-40)+'px'; tClone.style.top = (t.clientY-40)+'px'; } }
   function autoScrollStep() {
     if (!tClone) { tAutoScrollRAF = null; return; }
@@ -2539,10 +2587,11 @@ function setupEvents() {
   $('#paint-pen').onclick = () => setPaintTool('pen');
   $('#paint-eraser').onclick = () => setPaintTool('eraser');
   $('#paint-fill').onclick = () => setPaintTool('fill');
+  $('#paint-text').onclick = () => setPaintTool('text');
   $('#paint-undo').onclick = paintUndo;
   $('#paint-redo').onclick = paintRedo;
   $('#paint-clear').onclick = paintClear;
-  $('#paint-color').oninput = e => { Paint.color = e.target.value; if (Paint.tool !== 'fill') setPaintTool('pen'); };
+  $('#paint-color').oninput = e => { Paint.color = e.target.value; if (Paint.tool === 'eraser') setPaintTool('pen'); };
   $('#paint-size').oninput = e => { Paint.size = parseInt(e.target.value, 10); $('#paint-size-val').textContent = e.target.value; };
   const pcv = $('#paint-canvas');
   pcv.addEventListener('pointerdown', paintDown);
@@ -2698,10 +2747,12 @@ function setupEvents() {
   let lpT = null;
   $('#grid').addEventListener('touchstart', e => {
     const item = e.target.closest('.grid-item'); if (!item) return;
+    const cx = e.touches[0].clientX, cy = e.touches[0].clientY;
     lpT = setTimeout(() => {
+      App._cancelTouchDrag?.(); // remove any drag ghost so it doesn't linger behind the menu
       const idx = parseInt(item.dataset.index), entry = App.entries[idx]; if (!entry) return;
-      if (App.selected.has(idx) && App.selected.size > 1) showCtx(e.touches[0].clientX, e.touches[0].clientY, entry, true);
-      else { if (!App.selected.has(idx)) { App.selected.clear(); App.selected.add(idx); updateSelectionUI(); } showCtx(e.touches[0].clientX, e.touches[0].clientY, entry, false); }
+      if (App.selected.has(idx) && App.selected.size > 1) showCtx(cx, cy, entry, true);
+      else { if (!App.selected.has(idx)) { App.selected.clear(); App.selected.add(idx); updateSelectionUI(); } showCtx(cx, cy, entry, false); }
     }, 500);
   }, { passive: true });
   $('#grid').addEventListener('touchend', () => clearTimeout(lpT));
