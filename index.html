@@ -526,7 +526,7 @@ body {
 </div>
 
 <div id="viewer">
-  <div id="viewer-topbar"><span id="viewer-title"></span><button class="viewer-btn" id="viewer-loop" title="リピート" style="display:none">🔁</button><button class="viewer-btn" id="viewer-close" title="閉じる">✕</button></div>
+  <div id="viewer-topbar"><span id="viewer-title"></span><button class="viewer-btn" id="viewer-edit" title="ペイントで編集" style="display:none">🎨</button><button class="viewer-btn" id="viewer-loop" title="リピート" style="display:none">🔁</button><button class="viewer-btn" id="viewer-close" title="閉じる">✕</button></div>
   <div id="viewer-img-wrap"><div class="tap-zone left" id="tap-left"></div><div class="tap-zone center" id="tap-center"></div><div class="tap-zone right" id="tap-right"></div><img id="viewer-img" src="" alt=""></div>
   <div id="viewer-video-wrap" style="display:none;flex:1;align-items:center;justify-content:center;overflow:hidden"><video id="viewer-video" controls></video></div>
   <div id="viewer-audio-wrap" style="display:none"><span id="viewer-audio-icon">🎵</span><span id="viewer-audio-name"></span><audio id="viewer-audio" controls></audio></div>
@@ -1156,7 +1156,7 @@ function showCtx(x, y, entry, multi) {
     h += '<div class="ctx-item danger" data-action="delete-multi"><span class="ctx-icon">🗑</span>まとめて削除</div>';
   } else {
     if (isF) { h += '<div class="ctx-item" data-action="open"><span class="ctx-icon">📂</span>開く</div><div class="ctx-item" data-action="fav"><span class="ctx-icon">⭐</span>お気に入りに追加</div><div class="ctx-sep"></div>'; }
-    else if (IMG_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">🖼</span>画像を開く</div><div class="ctx-sep"></div>'; }
+    else if (IMG_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">🖼</span>画像を開く</div><div class="ctx-item" data-action="edit-image"><span class="ctx-icon">🎨</span>ペイントで編集</div><div class="ctx-sep"></div>'; }
     else if (VIDEO_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">🎬</span>動画を開く</div><div class="ctx-sep"></div>'; }
     else if (AUDIO_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">🎵</span>音声を開く</div><div class="ctx-sep"></div>'; }
     else if (TEXT_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">📝</span>テキストを開く</div><div class="ctx-sep"></div>'; }
@@ -1247,6 +1247,7 @@ async function doCtx(action) {
   else if (action === 'info') showInfo(entry);
   else if (action === 'new-folder') await createNewFolder();
   else if (action === 'new-image') openNewImage();
+  else if (action === 'edit-image') await editImage(entry);
   else if (action === 'reset-order') resetCustomOrder();
   else if (action === 'save-preset') saveAsNewPreset();
   else if (action === 'rename-preset') renameActivePreset();
@@ -1416,7 +1417,7 @@ async function createNewFolder() {
 const Paint = {
   canvas: null, ctx: null, drawing: false, pid: null, lastX: 0, lastY: 0,
   tool: 'pen', color: '#111111', size: 6, bgTransparent: false, bgColor: '#ffffff',
-  undoStack: [], redoStack: [], maxHistory: 16, anchorName: null,
+  undoStack: [], redoStack: [], maxHistory: 16, anchorName: null, defaultName: null,
 };
 function openNewImage() {
   if (!App.storage || !App.storage.isConnected) { toast('未接続です'); return; }
@@ -1453,7 +1454,8 @@ function newImageCreate() {
   $('#modal-newimg').classList.remove('show');
   startPaint(w, h, $('#newimg-bg').value);
 }
-function startPaint(w, h, bg) {
+function startPaint(w, h, bg, opts) {
+  opts = opts || {};
   const c = $('#paint-canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
@@ -1462,6 +1464,10 @@ function startPaint(w, h, bg) {
   Paint.bgColor = Paint.bgTransparent ? '#ffffff' : bg;
   ctx.clearRect(0, 0, w, h);
   if (!Paint.bgTransparent) { ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h); }
+  if (opts.image) ctx.drawImage(opts.image, 0, 0, w, h);
+  // Bound undo memory (~48MB budget) so large images don't exhaust RAM
+  Paint.maxHistory = Math.max(3, Math.min(16, Math.floor(48 * 1024 * 1024 / (w * h * 4))));
+  Paint.defaultName = opts.defaultName || null;
   Paint.undoStack = []; Paint.redoStack = []; Paint.drawing = false;
   Paint.color = $('#paint-color').value || '#111111';
   Paint.size = parseInt($('#paint-size').value, 10) || 6;
@@ -1469,6 +1475,35 @@ function startPaint(w, h, bg) {
   setPaintTool('pen');
   paintSnapshot();
   $('#paint').classList.add('active');
+}
+function loadImageEl(src) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = () => reject(new Error('画像をデコードできません'));
+    im.src = src;
+  });
+}
+async function editImage(entry) {
+  if (!App.storage || !App.storage.isConnected) { toast('未接続です'); return; }
+  if (!entry || entry['.tag'] !== 'file' || !IMG_EXT.has(ext(entry.name))) { toast('画像ではありません'); return; }
+  hideCtx();
+  const rel = entryRelPath(entry);
+  toast('画像を読み込み中...');
+  let url = null;
+  try {
+    const buf = await App.storage.loadBinary(rel);
+    url = URL.createObjectURL(new Blob([buf], { type: fileMime(entry.name) }));
+    const img = await loadImageEl(url);
+    let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    if (!w || !h) { toast('画像サイズを取得できません'); return; }
+    const MAX = 2560, lng = Math.max(w, h);
+    if (lng > MAX) { const s = MAX / lng; w = Math.round(w * s); h = Math.round(h * s); }
+    Paint.anchorName = entry.name; // place the edited copy right after the original in custom order
+    const base = entry.name.replace(/\.[^.]+$/, '');
+    startPaint(w, h, 'transparent', { image: img, defaultName: base + '-edit.png' });
+  } catch(e) { toast('読み込みエラー: ' + (e.message || e)); }
+  finally { if (url) URL.revokeObjectURL(url); }
 }
 function setPaintTool(t) {
   Paint.tool = t;
@@ -1603,7 +1638,7 @@ function paintTimestamp() {
   return '' + d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
 }
 async function savePaint() {
-  let name = prompt('ファイル名:', 'paint-' + paintTimestamp() + '.png');
+  let name = prompt('ファイル名:', Paint.defaultName || ('paint-' + paintTimestamp() + '.png'));
   if (name === null) return;
   name = name.trim();
   if (!name) { toast('ファイル名を入力してください'); return; }
@@ -2500,6 +2535,7 @@ async function loadViewerPage(idx) {
   const cat = fileCategory(entry.name), mime = fileMime(entry.name);
   $('#viewer-title').textContent = entry.name; updateVSlider();
   $('#viewer-loop').style.display = (cat === 'video' || cat === 'audio') ? '' : 'none';
+  $('#viewer-edit').style.display = (cat === 'image' && IMG_EXT.has(ext(entry.name))) ? '' : 'none';
   hideAllViewerPanes();
 
   try {
@@ -2835,6 +2871,7 @@ function setupEvents() {
 
   // Viewer
   $('#viewer-close').onclick = () => { closeViewer(); history.back(); };
+  $('#viewer-edit').onclick = () => { const entry = App.viewerImages[App.viewerIndex]; if (!entry) return; closeViewer(); history.back(); editImage(entry); };
   $('#viewer-loop').onclick = () => {
     const btn = $('#viewer-loop'), on = !btn.classList.contains('active');
     btn.classList.toggle('active', on);
