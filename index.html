@@ -282,7 +282,7 @@ body {
 .touch-drag-clone { position: fixed; z-index: 999; pointer-events: none; opacity: 0.8; transform: scale(0.85); border: 2px solid var(--accent); border-radius: var(--radius); background: var(--bg-raised); }
 
 /* ── Context Menu ──────────────────────────────────────── */
-#ctx-menu { display: none; position: fixed; z-index: 200; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 0; box-shadow: 0 8px 24px rgba(0,0,0,0.5); min-width: 180px; }
+#ctx-menu { display: none; position: fixed; z-index: 200; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 0; box-shadow: 0 8px 24px rgba(0,0,0,0.5); min-width: 180px; max-height: 80vh; overflow-y: auto; }
 #ctx-menu.show { display: block; }
 .ctx-item { display: flex; align-items: center; gap: 8px; padding: 7px 14px; cursor: pointer; font-size: 12.5px; color: var(--text); }
 .ctx-item:hover { background: var(--bg-hover); }
@@ -424,15 +424,58 @@ body {
 .trash-group-header button:hover { background: var(--accent-dim); }
 .trash-item { padding: 4px 10px 4px 20px; font-size: 12px; color: var(--text); }
 .trash-empty { padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
+/* ── Paint Editor ──────────────────────────────────────── */
+#paint { display: none; position: fixed; inset: 0; z-index: 250; background: var(--bg); flex-direction: column; }
+#paint.active { display: flex; }
+#paint-toolbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  padding: 8px 10px; padding-top: calc(8px + env(safe-area-inset-top));
+  background: var(--bg-raised); border-bottom: 1px solid var(--border);
+}
+.paint-tool {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: transparent; color: var(--text); cursor: pointer; font-size: 16px; flex-shrink: 0;
+}
+.paint-tool:hover { background: var(--bg-hover); }
+.paint-tool.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.paint-tool.disabled { opacity: 0.35; pointer-events: none; }
+.paint-tool.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 500; width: auto; padding: 0 16px; font-size: 13px; }
+.paint-tool.primary:hover { background: var(--accent-strong); }
+#paint-color { width: 34px; height: 34px; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; cursor: pointer; flex-shrink: 0; }
+#paint-size { width: 90px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.paint-label { font-size: 11px; color: var(--text-muted); min-width: 18px; text-align: center; flex-shrink: 0; }
+.paint-sep { width: 1px; height: 22px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
+.paint-spacer { flex: 1; min-width: 8px; }
+#paint-canvas-wrap {
+  flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(45deg, rgba(128,128,128,0.12) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(128,128,128,0.12) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(128,128,128,0.12) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(128,128,128,0.12) 75%);
+  background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+#paint-canvas { box-shadow: 0 2px 16px rgba(0,0,0,0.4); touch-action: none; max-width: 100%; max-height: 100%; cursor: crosshair; }
+
 /* ── Responsive ────────────────────────────────────────── */
 @media (display-mode: standalone) {
   #toolbar { padding-top: env(safe-area-inset-top); height: calc(var(--toolbar-h) + env(safe-area-inset-top)); }
   #viewer-bottombar { padding-bottom: env(safe-area-inset-bottom); }
 }
+.tb-break { display: none; }
 @media (max-width: 700px) {
   #sidebar { display: none; }
   #sidebar.mobile-open { display: flex !important; position: fixed; top: var(--toolbar-h); left: 0; bottom: 0; z-index: 50; box-shadow: 4px 0 20px rgba(0,0,0,0.5); width: var(--sidebar-w); min-width: var(--sidebar-w); border-right: 1px solid var(--border); }
   #main { padding: 6px; }
+  /* Two-row toolbar so controls aren't clipped on narrow screens */
+  #toolbar {
+    flex-wrap: wrap; height: auto; min-height: var(--toolbar-h);
+    padding-top: calc(4px + env(safe-area-inset-top)); padding-bottom: 4px; row-gap: 4px;
+  }
+  .tb-break { display: block; flex-basis: 100%; height: 0; margin: 0; }
+  #thumb-slider { flex: 1; }
 }
 </style>
 </head>
@@ -448,6 +491,7 @@ body {
     <button class="tb-btn" id="btn-up" title="上のフォルダ">↑</button>
     <div id="breadcrumb"></div>
     <span id="sel-badge"></span>
+    <div class="tb-break"></div>
     <select id="sort-select">
       <option value="name_asc">名前 ↑</option>
       <option value="name_desc">名前 ↓</option>
@@ -461,6 +505,7 @@ body {
     <input type="range" id="thumb-slider" min="80" max="320" value="160" title="サムネサイズ">
     <div class="tb-spacer"></div>
     <button class="tb-btn" id="btn-select-all" title="全選択">☑</button>
+    <button class="tb-btn" id="btn-new-image" title="新規画像作成">🎨</button>
     <button class="tb-btn" id="btn-undo" title="元に戻す" style="display:none">↩</button>
     <button class="tb-btn" id="btn-trash" title="ゴミ箱">🗑</button>
     <button class="tb-btn" id="btn-refresh" title="更新">⟳</button>
@@ -489,6 +534,28 @@ body {
   <div id="viewer-pdf-wrap" style="display:none"><iframe id="viewer-pdf"></iframe></div>
   <div id="viewer-bottombar"><input type="range" id="viewer-slider" min="0" max="0" value="0"><span id="viewer-page-label"></span></div>
 </div>
+
+<div id="paint">
+  <div id="paint-toolbar">
+    <button class="paint-tool" id="paint-close" title="閉じる">✕</button>
+    <div class="paint-sep"></div>
+    <button class="paint-tool active" id="paint-pen" title="ペン">✏️</button>
+    <button class="paint-tool" id="paint-eraser" title="消しゴム">🩹</button>
+    <button class="paint-tool" id="paint-fill" title="塗りつぶし">🪣</button>
+    <div class="paint-sep"></div>
+    <input type="color" id="paint-color" value="#111111" title="色">
+    <input type="range" id="paint-size" min="1" max="64" value="6" title="太さ">
+    <span class="paint-label" id="paint-size-val">6</span>
+    <div class="paint-sep"></div>
+    <button class="paint-tool disabled" id="paint-undo" title="元に戻す">↩</button>
+    <button class="paint-tool disabled" id="paint-redo" title="やり直し">↪</button>
+    <button class="paint-tool" id="paint-clear" title="全消去">🗑</button>
+    <div class="paint-spacer"></div>
+    <button class="paint-tool primary" id="paint-save" title="保存">保存</button>
+  </div>
+  <div id="paint-canvas-wrap"><canvas id="paint-canvas"></canvas></div>
+</div>
+
 <div id="ctx-menu"></div>
 
 <div class="modal-overlay" id="modal-rename"><div class="modal-box"><h3>名前の変更</h3><input class="modal-input" id="rename-input" type="text" autocomplete="off"><div class="modal-actions"><button class="modal-btn cancel" id="rename-cancel">キャンセル</button><button class="modal-btn primary" id="rename-ok">変更</button></div></div></div>
@@ -513,6 +580,33 @@ body {
   <h3>ファイル情報</h3>
   <div id="info-body"></div>
   <div class="modal-actions"><button class="modal-btn cancel" id="info-close">閉じる</button></div>
+</div></div>
+
+<div class="modal-overlay" id="modal-newimg"><div class="modal-box">
+  <h3>新規画像作成</h3>
+  <div class="preset-row"><label>サイズ</label>
+    <select class="preset-select" id="newimg-size">
+      <option value="1080x1440">縦長 1080×1440</option>
+      <option value="1440x1080">横長 1440×1080</option>
+      <option value="1080x1080">正方形 1080×1080</option>
+      <option value="1240x1754">A4縦 1240×1754</option>
+      <option value="1754x1240">A4横 1754×1240</option>
+      <option value="custom">カスタム</option>
+    </select>
+  </div>
+  <div class="preset-row" id="newimg-custom-row" style="display:none">
+    <label>幅 × 高さ</label>
+    <input class="preset-input" id="newimg-w" type="number" min="16" max="4096" value="1080" style="flex:0 1 90px">
+    <span style="color:var(--text-muted)">×</span>
+    <input class="preset-input" id="newimg-h" type="number" min="16" max="4096" value="1080" style="flex:0 1 90px">
+  </div>
+  <div class="preset-row"><label>背景</label>
+    <select class="preset-select" id="newimg-bg">
+      <option value="#ffffff">白</option>
+      <option value="transparent">透明</option>
+    </select>
+  </div>
+  <div class="modal-actions"><button class="modal-btn cancel" id="newimg-cancel">キャンセル</button><button class="modal-btn primary" id="newimg-ok">作成</button></div>
 </div></div>
 
 
@@ -1079,16 +1173,17 @@ function showCtx(x, y, entry, multi) {
     h += '<div class="ctx-sep"></div>';
     h += '<div class="ctx-item danger" data-action="delete"><span class="ctx-icon">🗑</span>削除</div>';
   }
-  m.innerHTML = h; m.style.left = Math.min(x, innerWidth - 200) + 'px'; m.style.top = Math.min(y, innerHeight - 200) + 'px'; m.classList.add('show');
+  // Unify: also expose folder-level actions so they're reachable without hunting for empty space
+  h += '<div class="ctx-sep"></div>' + folderActionsHtml();
+  m.innerHTML = h; positionCtx(m, x, y);
 }
-function showCtxEmpty(x, y) {
-  ctxTarget = null; ctxIsMulti = false;
-  const m = $('#ctx-menu');
+function folderActionsHtml() {
   let eh = '';
   if (App.fileClip && App.fileClip.length) {
     eh += `<div class="ctx-item" data-action="paste"><span class="ctx-icon">📋</span>ペースト（${App.fileClip.length}件）</div><div class="ctx-sep"></div>`;
   }
   eh += '<div class="ctx-item" data-action="new-folder"><span class="ctx-icon">📁</span>新規フォルダ</div>';
+  eh += '<div class="ctx-item" data-action="new-image"><span class="ctx-icon">🎨</span>新規画像作成</div>';
   eh += '<div class="ctx-sep"></div>';
   eh += '<div class="ctx-item" data-action="save-preset"><span class="ctx-icon">📌</span>現在の並びを新規プリセット登録</div>';
   const activePreset = getActivePreset();
@@ -1099,8 +1194,20 @@ function showCtxEmpty(x, y) {
   if (App.customOrders?.[customOrderKey()] || App.folderSortModes?.[customOrderKey()]) {
     eh += '<div class="ctx-item" data-action="reset-order"><span class="ctx-icon">↺</span>カスタム順をリセット</div>';
   }
-  m.innerHTML = eh;
-  m.style.left = Math.min(x, innerWidth - 200) + 'px'; m.style.top = Math.min(y, innerHeight - 200) + 'px'; m.classList.add('show');
+  return eh;
+}
+function positionCtx(m, x, y) {
+  m.style.left = '-9999px'; m.style.top = '-9999px';
+  m.classList.add('show');
+  const w = m.offsetWidth || 200, h = m.offsetHeight || 200;
+  m.style.left = Math.max(4, Math.min(x, innerWidth - w - 6)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, innerHeight - h - 6)) + 'px';
+}
+function showCtxEmpty(x, y) {
+  ctxTarget = null; ctxIsMulti = false;
+  const m = $('#ctx-menu');
+  m.innerHTML = folderActionsHtml();
+  positionCtx(m, x, y);
 }
 function showCtxTree(x, y, path) {
   ctxTarget = { _treePath: path }; ctxIsMulti = false;
@@ -1116,7 +1223,7 @@ function showCtxTree(x, y, path) {
     h += '<div class="ctx-item" data-action="tree-rename"><span class="ctx-icon">✏</span>名前の変更</div>';
     h += '<div class="ctx-item danger" data-action="tree-delete"><span class="ctx-icon">🗑</span>削除</div>';
   }
-  m.innerHTML = h; m.style.left = Math.min(x, innerWidth - 200) + 'px'; m.style.top = Math.min(y, innerHeight - 200) + 'px'; m.classList.add('show');
+  m.innerHTML = h; positionCtx(m, x, y);
 }
 function hideCtx() { $('#ctx-menu').classList.remove('show'); ctxTarget = null; ctxIsMulti = false; }
 
@@ -1138,6 +1245,7 @@ async function doCtx(action) {
   else if (action === 'download') await downloadEntry(entry);
   else if (action === 'info') showInfo(entry);
   else if (action === 'new-folder') await createNewFolder();
+  else if (action === 'new-image') openNewImage();
   else if (action === 'reset-order') resetCustomOrder();
   else if (action === 'save-preset') saveAsNewPreset();
   else if (action === 'rename-preset') renameActivePreset();
@@ -1301,6 +1409,191 @@ async function createNewFolder() {
     toast('フォルダを作成しました');
     loadFolder(App.currentPath);
   } catch(e) { toast('エラー: ' + e.message); }
+}
+
+// ── Paint Editor (new image creation) ──
+const Paint = {
+  canvas: null, ctx: null, drawing: false, pid: null, lastX: 0, lastY: 0,
+  tool: 'pen', color: '#111111', size: 6, bgTransparent: false, bgColor: '#ffffff',
+  undoStack: [], redoStack: [], maxHistory: 16,
+};
+function openNewImage() {
+  if (!App.storage || !App.storage.isConnected) { toast('未接続です'); return; }
+  hideCtx();
+  $('#newimg-custom-row').style.display = $('#newimg-size').value === 'custom' ? 'flex' : 'none';
+  $('#modal-newimg').classList.add('show');
+}
+function newImageCreate() {
+  let w, h;
+  const v = $('#newimg-size').value;
+  if (v === 'custom') { w = parseInt($('#newimg-w').value, 10); h = parseInt($('#newimg-h').value, 10); }
+  else { const p = v.split('x'); w = parseInt(p[0], 10); h = parseInt(p[1], 10); }
+  if (!w || !h || w < 16 || h < 16 || w > 4096 || h > 4096) { toast('サイズが不正です（16〜4096）'); return; }
+  $('#modal-newimg').classList.remove('show');
+  startPaint(w, h, $('#newimg-bg').value);
+}
+function startPaint(w, h, bg) {
+  const c = $('#paint-canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  Paint.canvas = c; Paint.ctx = ctx;
+  Paint.bgTransparent = (bg === 'transparent');
+  Paint.bgColor = Paint.bgTransparent ? '#ffffff' : bg;
+  ctx.clearRect(0, 0, w, h);
+  if (!Paint.bgTransparent) { ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h); }
+  Paint.undoStack = []; Paint.redoStack = []; Paint.drawing = false;
+  Paint.color = $('#paint-color').value || '#111111';
+  Paint.size = parseInt($('#paint-size').value, 10) || 6;
+  $('#paint-size-val').textContent = Paint.size;
+  setPaintTool('pen');
+  paintSnapshot();
+  $('#paint').classList.add('active');
+}
+function setPaintTool(t) {
+  Paint.tool = t;
+  $('#paint-pen').classList.toggle('active', t === 'pen');
+  $('#paint-eraser').classList.toggle('active', t === 'eraser');
+  $('#paint-fill').classList.toggle('active', t === 'fill');
+}
+function paintSnapshot() {
+  try {
+    Paint.undoStack.push(Paint.ctx.getImageData(0, 0, Paint.canvas.width, Paint.canvas.height));
+    if (Paint.undoStack.length > Paint.maxHistory) Paint.undoStack.shift();
+    Paint.redoStack = [];
+    updatePaintHistoryBtns();
+  } catch(_) {}
+}
+function paintUndo() {
+  if (Paint.undoStack.length <= 1) return;
+  Paint.redoStack.push(Paint.undoStack.pop());
+  Paint.ctx.putImageData(Paint.undoStack[Paint.undoStack.length - 1], 0, 0);
+  updatePaintHistoryBtns();
+}
+function paintRedo() {
+  if (!Paint.redoStack.length) return;
+  const d = Paint.redoStack.pop();
+  Paint.undoStack.push(d);
+  Paint.ctx.putImageData(d, 0, 0);
+  updatePaintHistoryBtns();
+}
+function updatePaintHistoryBtns() {
+  $('#paint-undo').classList.toggle('disabled', Paint.undoStack.length <= 1);
+  $('#paint-redo').classList.toggle('disabled', Paint.redoStack.length === 0);
+}
+function paintPos(e) {
+  const r = Paint.canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) * (Paint.canvas.width / r.width),
+    y: (e.clientY - r.top) * (Paint.canvas.height / r.height),
+  };
+}
+function paintStroke(x0, y0, x1, y1) {
+  const ctx = Paint.ctx;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = Paint.size;
+  if (Paint.tool === 'eraser' && Paint.bgTransparent) { ctx.globalCompositeOperation = 'destination-out'; ctx.strokeStyle = 'rgba(0,0,0,1)'; }
+  else { ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = Paint.tool === 'eraser' ? Paint.bgColor : Paint.color; }
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  ctx.globalCompositeOperation = 'source-over';
+}
+function paintDown(e) {
+  e.preventDefault();
+  const { x, y } = paintPos(e);
+  if (Paint.tool === 'fill') { paintFloodFill(Math.floor(x), Math.floor(y)); paintSnapshot(); return; }
+  Paint.drawing = true; Paint.pid = e.pointerId; Paint.lastX = x; Paint.lastY = y;
+  try { Paint.canvas.setPointerCapture(e.pointerId); } catch(_) {}
+  paintStroke(x, y, x, y);
+}
+function paintMove(e) {
+  if (!Paint.drawing || e.pointerId !== Paint.pid) return;
+  e.preventDefault();
+  const { x, y } = paintPos(e);
+  paintStroke(Paint.lastX, Paint.lastY, x, y);
+  Paint.lastX = x; Paint.lastY = y;
+}
+function paintEnd(e) {
+  if (!Paint.drawing || e.pointerId !== Paint.pid) return;
+  Paint.drawing = false; Paint.pid = null;
+  paintSnapshot();
+}
+function paintFloodFill(sx, sy) {
+  const ctx = Paint.ctx, w = Paint.canvas.width, h = Paint.canvas.height;
+  if (sx < 0 || sy < 0 || sx >= w || sy >= h) return;
+  const img = ctx.getImageData(0, 0, w, h), data = img.data;
+  const si = (sy * w + sx) * 4;
+  const tr = data[si], tg = data[si+1], tb = data[si+2], ta = data[si+3];
+  const hex = Paint.color.replace('#', '');
+  const fr = parseInt(hex.slice(0,2),16), fg = parseInt(hex.slice(2,4),16), fb = parseInt(hex.slice(4,6),16);
+  if (tr === fr && tg === fg && tb === fb && ta === 255) return;
+  const tol = 32;
+  const visited = new Uint8Array(w * h);
+  const stack = [sy * w + sx];
+  while (stack.length) {
+    const p = stack.pop();
+    if (visited[p]) continue;
+    visited[p] = 1;
+    const i = p * 4;
+    if (Math.abs(data[i]-tr) > tol || Math.abs(data[i+1]-tg) > tol || Math.abs(data[i+2]-tb) > tol || Math.abs(data[i+3]-ta) > tol) continue;
+    data[i] = fr; data[i+1] = fg; data[i+2] = fb; data[i+3] = 255;
+    const px = p % w, py = (p - px) / w;
+    if (px > 0) stack.push(p - 1);
+    if (px < w - 1) stack.push(p + 1);
+    if (py > 0) stack.push(p - w);
+    if (py < h - 1) stack.push(p + w);
+  }
+  ctx.putImageData(img, 0, 0);
+}
+function paintClear() {
+  if (!confirm('キャンバスを全消去しますか？')) return;
+  const ctx = Paint.ctx, w = Paint.canvas.width, h = Paint.canvas.height;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.clearRect(0, 0, w, h);
+  if (!Paint.bgTransparent) { ctx.fillStyle = Paint.bgColor; ctx.fillRect(0, 0, w, h); }
+  paintSnapshot();
+}
+function paintReset() {
+  $('#paint').classList.remove('active');
+  Paint.undoStack = []; Paint.redoStack = []; Paint.drawing = false;
+}
+function closePaint() {
+  if (Paint.undoStack.length > 1 && !confirm('保存せずに閉じますか？')) return;
+  paintReset();
+}
+function paintTimestamp() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return '' + d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+async function savePaint() {
+  let name = prompt('ファイル名:', 'paint-' + paintTimestamp() + '.png');
+  if (name === null) return;
+  name = name.trim();
+  if (!name) { toast('ファイル名を入力してください'); return; }
+  if (!/\.png$/i.test(name)) name += '.png';
+  const rel = App.currentPath ? App.currentPath + '/' + name : name;
+  const blob = await new Promise(res => Paint.canvas.toBlob(res, 'image/png'));
+  if (!blob) { toast('画像の生成に失敗しました'); return; }
+  const btn = $('#paint-save'); btn.classList.add('disabled'); const label = btn.textContent; btn.textContent = '保存中...';
+  try {
+    await uploadBinary(rel, blob);
+    toast('保存しました');
+    paintReset();
+    loadFolder(App.currentPath);
+  } catch(e) { toast('保存エラー: ' + (e.message || e)); }
+  finally { btn.classList.remove('disabled'); btn.textContent = label; }
+}
+async function uploadBinary(rel, blob) {
+  const path = rel.startsWith('/') ? rel : '/' + rel;
+  const token = App.storage.getToken();
+  const r = await fetch('https://content.dropboxapi.com/2/files/upload', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Dropbox-API-Arg': dbxArg({ path, mode: 'add', autorename: true, mute: false, strict_conflict: false }),
+      'Content-Type': 'application/octet-stream',
+    },
+    body: blob,
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
 }
 
 // ── Dropbox Temporary Link (for streaming video/audio) ──
@@ -2231,8 +2524,31 @@ function setupEvents() {
 
   $('#btn-sidebar').onclick = () => { const sb = $('#sidebar'), mob = innerWidth <= 700; if (mob) sb.classList.toggle('mobile-open'); else { sb.classList.toggle('hidden'); saveSetting('sidebarHidden', sb.classList.contains('hidden')); } };
   $('#btn-select-all').onclick = selectAll;
+  $('#btn-new-image').onclick = openNewImage;
   $('#btn-undo').onclick = undoLast;
   $('#btn-save-preset').onclick = saveAsNewPreset;
+
+  // New image (paint) modal
+  $('#newimg-size').onchange = () => { $('#newimg-custom-row').style.display = $('#newimg-size').value === 'custom' ? 'flex' : 'none'; };
+  $('#newimg-cancel').onclick = () => $('#modal-newimg').classList.remove('show');
+  $('#newimg-ok').onclick = newImageCreate;
+
+  // Paint editor controls
+  $('#paint-close').onclick = () => closePaint();
+  $('#paint-save').onclick = savePaint;
+  $('#paint-pen').onclick = () => setPaintTool('pen');
+  $('#paint-eraser').onclick = () => setPaintTool('eraser');
+  $('#paint-fill').onclick = () => setPaintTool('fill');
+  $('#paint-undo').onclick = paintUndo;
+  $('#paint-redo').onclick = paintRedo;
+  $('#paint-clear').onclick = paintClear;
+  $('#paint-color').oninput = e => { Paint.color = e.target.value; if (Paint.tool !== 'fill') setPaintTool('pen'); };
+  $('#paint-size').oninput = e => { Paint.size = parseInt(e.target.value, 10); $('#paint-size-val').textContent = e.target.value; };
+  const pcv = $('#paint-canvas');
+  pcv.addEventListener('pointerdown', paintDown);
+  pcv.addEventListener('pointermove', paintMove);
+  pcv.addEventListener('pointerup', paintEnd);
+  pcv.addEventListener('pointercancel', paintEnd);
 
 
   $('#breadcrumb').addEventListener('click', e => { const item = e.target.closest('.bc-item'); if (item && !item.classList.contains('current')) navigate(item.dataset.path); });
@@ -2582,6 +2898,12 @@ function setupEvents() {
   // Keyboard
   document.addEventListener('keydown', e => {
     if (e.target.closest('input')) return;
+    if ($('#paint').classList.contains('active')) {
+      if (e.key === 'Escape') { e.preventDefault(); closePaint(); }
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? paintRedo() : paintUndo(); }
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); paintRedo(); }
+      return;
+    }
     if (App.viewerVisible) { if (e.key==='Escape') { closeViewer(); history.back(); } else if (e.key==='ArrowLeft') vPrev(); else if (e.key==='ArrowRight') vNext(); return; }
     if (e.key==='Backspace') { e.preventDefault(); if (App.currentPath) navigate(parentPath(App.currentPath)); }
     if (e.key==='a' && (e.ctrlKey||e.metaKey)) { e.preventDefault(); selectAll(); }
