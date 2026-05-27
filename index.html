@@ -301,7 +301,7 @@ body {
 .viewer-btn:hover { background: rgba(255,255,255,0.2); }
 .viewer-btn.active { background: var(--accent); color: #fff; }
 #viewer-img-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
-#viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+#viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 #viewer-img.loading { opacity: 0; }
 .tap-zone { position: absolute; top: 0; bottom: 0; width: 30%; z-index: 105; cursor: pointer; }
 .tap-zone.left { left: 0; } .tap-zone.right { right: 0; }
@@ -527,7 +527,7 @@ body {
 
 <div id="viewer">
   <div id="viewer-topbar"><span id="viewer-title"></span><button class="viewer-btn" id="viewer-edit" title="ペイントで編集" style="display:none">🎨</button><button class="viewer-btn" id="viewer-loop" title="リピート" style="display:none">🔁</button><button class="viewer-btn" id="viewer-close" title="閉じる">✕</button></div>
-  <div id="viewer-img-wrap"><div class="tap-zone left" id="tap-left"></div><div class="tap-zone center" id="tap-center"></div><div class="tap-zone right" id="tap-right"></div><img id="viewer-img" src="" alt=""></div>
+  <div id="viewer-img-wrap"><div class="tap-zone left" id="tap-left"></div><div class="tap-zone center" id="tap-center"></div><div class="tap-zone right" id="tap-right"></div><img id="viewer-img" src="" alt="" draggable="false"></div>
   <div id="viewer-video-wrap" style="display:none;flex:1;align-items:center;justify-content:center;overflow:hidden"><video id="viewer-video" controls></video></div>
   <div id="viewer-audio-wrap" style="display:none"><span id="viewer-audio-icon">🎵</span><span id="viewer-audio-name"></span><audio id="viewer-audio" controls></audio></div>
   <div id="viewer-text-wrap" style="display:none"><pre id="viewer-text"></pre></div>
@@ -3003,6 +3003,7 @@ function setupEvents() {
   let sx = 0;
   $('#viewer-img-wrap').addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
   $('#viewer-img-wrap').addEventListener('touchend', e => { const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx)>50) dx > 0 ? vPrev() : vNext(); });
+  $('#viewer-img-wrap').addEventListener('contextmenu', e => e.preventDefault());
   $('#viewer').addEventListener('mousemove', () => { if (App.viewerVisible) showViewerBar(); });
   let wCD = false;
   $('#viewer').addEventListener('wheel', e => { if (!App.viewerVisible||wCD) return; e.preventDefault(); wCD=true; setTimeout(()=>wCD=false,200); e.deltaY>0 ? vNext() : vPrev(); }, { passive: false });
