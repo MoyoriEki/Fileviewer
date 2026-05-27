@@ -2201,59 +2201,69 @@ function initDragReorder() {
   // Touch D&D
   let tSrc = null, tClone = null, tLP = null;
   let tAutoScrollRAF = null, tLastTouchX = 0, tLastTouchY = 0;
-  let tStartX = 0, tStartY = 0, tMoved = false;
+  let tStartX = 0, tStartY = 0, tMenuShown = false;
   const ASCROLL_ZONE = 50, ASCROLL_SPEED = 8;
   grid.addEventListener('touchstart', e => {
     const item = e.target.closest('.grid-item'); if (!item) return;
-    tStartX = e.touches[0].clientX; tStartY = e.touches[0].clientY; tMoved = false;
+    tStartX = e.touches[0].clientX; tStartY = e.touches[0].clientY; tMenuShown = false;
     tLP = setTimeout(() => {
+      // Long-press → show context menu. Dragging only starts if the finger then moves.
       tSrc = parseInt(item.dataset.index);
+      const entry = App.entries[tSrc]; if (!entry) return;
       if (!App.selected.has(tSrc)) { App.selected.clear(); App.selected.add(tSrc); updateSelectionUI(); }
-      App._touchDragging = true;
-      item.classList.add('dragging');
-      tClone = item.cloneNode(true); tClone.className = 'touch-drag-clone';
-      tClone.style.width = item.offsetWidth + 'px'; tClone.style.height = item.offsetHeight + 'px';
-      document.body.appendChild(tClone); posC(e.touches[0]);
-    }, 400);
+      const multi = App.selected.has(tSrc) && App.selected.size > 1;
+      tMenuShown = true;
+      App._ctxOpenedAt = Date.now();
+      showCtx(tStartX, tStartY, entry, multi);
+    }, 450);
   }, { passive: true });
   grid.addEventListener('touchmove', e => {
-    if (tClone) { e.preventDefault(); posC(e.touches[0]);
-      tLastTouchX = e.touches[0].clientX; tLastTouchY = e.touches[0].clientY;
-      if (Math.abs(tLastTouchX - tStartX) > 12 || Math.abs(tLastTouchY - tStartY) > 12) tMoved = true;
-      if (!tAutoScrollRAF) tAutoScrollRAF = requestAnimationFrame(autoScrollStep);
-      document.querySelectorAll('.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('drag-over-before','drag-over-after','drop-target'));
-      const pt = e.touches[0];
-      const elUnder = document.elementFromPoint(pt.clientX, pt.clientY);
-      const treeRow = elUnder?.closest('.tree-row');
-      const favItem = !treeRow ? elUnder?.closest('.fav-item') : null;
-      if (treeRow) { treeRow.classList.add('drop-target'); }
-      else if (favItem) { favItem.classList.add('drop-target'); }
-      else {
-        const under = elUnder?.closest('.grid-item');
-        if (under) {
-          if (under.dataset.tag === 'folder' && !App.selected.has(parseInt(under.dataset.index))) {
-            under.classList.add('drop-target');
-          } else if (under.dataset.tag === 'file') {
-            const r = under.getBoundingClientRect();
-            (pt.clientX < r.left+r.width/2) ? under.classList.add('drag-over-before') : under.classList.add('drag-over-after');
-          }
+    const pt = e.touches[0];
+    const movedFar = Math.abs(pt.clientX - tStartX) > 12 || Math.abs(pt.clientY - tStartY) > 12;
+    if (!tClone) {
+      if (!movedFar) return;
+      if (tMenuShown) {
+        // Finger moved after the menu opened → switch to drag-to-reorder
+        e.preventDefault();
+        hideCtx(); tMenuShown = false;
+        const item = grid.querySelector('.grid-item[data-index="' + tSrc + '"]');
+        if (!item) return;
+        App._touchDragging = true;
+        item.classList.add('dragging');
+        tClone = item.cloneNode(true); tClone.className = 'touch-drag-clone';
+        tClone.style.width = item.offsetWidth + 'px'; tClone.style.height = item.offsetHeight + 'px';
+        document.body.appendChild(tClone); posC(pt);
+      } else {
+        // Moved before the long-press fired → it's a scroll, cancel the pending menu
+        clearTimeout(tLP);
+      }
+      return;
+    }
+    e.preventDefault(); posC(pt);
+    tLastTouchX = pt.clientX; tLastTouchY = pt.clientY;
+    if (!tAutoScrollRAF) tAutoScrollRAF = requestAnimationFrame(autoScrollStep);
+    document.querySelectorAll('.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('drag-over-before','drag-over-after','drop-target'));
+    const elUnder = document.elementFromPoint(pt.clientX, pt.clientY);
+    const treeRow = elUnder?.closest('.tree-row');
+    const favItem = !treeRow ? elUnder?.closest('.fav-item') : null;
+    if (treeRow) { treeRow.classList.add('drop-target'); }
+    else if (favItem) { favItem.classList.add('drop-target'); }
+    else {
+      const under = elUnder?.closest('.grid-item');
+      if (under) {
+        if (under.dataset.tag === 'folder' && !App.selected.has(parseInt(under.dataset.index))) {
+          under.classList.add('drop-target');
+        } else if (under.dataset.tag === 'file') {
+          const r = under.getBoundingClientRect();
+          (pt.clientX < r.left+r.width/2) ? under.classList.add('drag-over-before') : under.classList.add('drag-over-after');
         }
       }
-    } else clearTimeout(tLP);
+    }
   }, { passive: false });
   grid.addEventListener('touchend', async e => {
     clearTimeout(tLP);
     if (tClone && tSrc !== null) {
       const pt = e.changedTouches[0];
-      // Long-press released in place (no drag) → show context menu
-      if (!tMoved) {
-        e.preventDefault();
-        const entry = App.entries[tSrc], multi = App.selected.has(tSrc) && App.selected.size > 1;
-        cancelTouchDrag();
-        App._ctxOpenedAt = Date.now();
-        if (entry) showCtx(pt.clientX, pt.clientY, entry, multi);
-        return;
-      }
       const items = App.selected.size > 0
         ? [...App.selected].map(i => App.entries[i]).filter(Boolean)
         : (App.entries[tSrc] ? [App.entries[tSrc]] : []);
@@ -2306,7 +2316,7 @@ function initDragReorder() {
     clearTimeout(tLP);
     if (tClone) { tClone.remove(); tClone = null; }
     document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
-    tSrc = null; App._touchDragging = false;
+    tSrc = null; tMenuShown = false; App._touchDragging = false;
     if (tAutoScrollRAF) { cancelAnimationFrame(tAutoScrollRAF); tAutoScrollRAF = null; }
   }
   grid.addEventListener('touchcancel', cancelTouchDrag);
