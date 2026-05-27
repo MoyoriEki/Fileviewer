@@ -2201,9 +2201,11 @@ function initDragReorder() {
   // Touch D&D
   let tSrc = null, tClone = null, tLP = null;
   let tAutoScrollRAF = null, tLastTouchX = 0, tLastTouchY = 0;
+  let tStartX = 0, tStartY = 0, tMoved = false;
   const ASCROLL_ZONE = 50, ASCROLL_SPEED = 8;
   grid.addEventListener('touchstart', e => {
     const item = e.target.closest('.grid-item'); if (!item) return;
+    tStartX = e.touches[0].clientX; tStartY = e.touches[0].clientY; tMoved = false;
     tLP = setTimeout(() => {
       tSrc = parseInt(item.dataset.index);
       if (!App.selected.has(tSrc)) { App.selected.clear(); App.selected.add(tSrc); updateSelectionUI(); }
@@ -2217,6 +2219,7 @@ function initDragReorder() {
   grid.addEventListener('touchmove', e => {
     if (tClone) { e.preventDefault(); posC(e.touches[0]);
       tLastTouchX = e.touches[0].clientX; tLastTouchY = e.touches[0].clientY;
+      if (Math.abs(tLastTouchX - tStartX) > 12 || Math.abs(tLastTouchY - tStartY) > 12) tMoved = true;
       if (!tAutoScrollRAF) tAutoScrollRAF = requestAnimationFrame(autoScrollStep);
       document.querySelectorAll('.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('drag-over-before','drag-over-after','drop-target'));
       const pt = e.touches[0];
@@ -2242,6 +2245,15 @@ function initDragReorder() {
     clearTimeout(tLP);
     if (tClone && tSrc !== null) {
       const pt = e.changedTouches[0];
+      // Long-press released in place (no drag) → show context menu
+      if (!tMoved) {
+        e.preventDefault();
+        const entry = App.entries[tSrc], multi = App.selected.has(tSrc) && App.selected.size > 1;
+        cancelTouchDrag();
+        App._ctxOpenedAt = Date.now();
+        if (entry) showCtx(pt.clientX, pt.clientY, entry, multi);
+        return;
+      }
       const items = App.selected.size > 0
         ? [...App.selected].map(i => App.entries[i]).filter(Boolean)
         : (App.entries[tSrc] ? [App.entries[tSrc]] : []);
@@ -2779,24 +2791,13 @@ function setupEvents() {
     if (App.selected.has(idx) && App.selected.size > 1) { showCtx(e.clientX, e.clientY, entry, true); }
     else { if (!App.selected.has(idx)) { App.selected.clear(); App.selected.add(idx); updateSelectionUI(); } showCtx(e.clientX, e.clientY, entry, false); }
   });
-  // Long press (mobile)
-  let lpT = null;
-  $('#grid').addEventListener('touchstart', e => {
-    const item = e.target.closest('.grid-item'); if (!item) return;
-    const cx = e.touches[0].clientX, cy = e.touches[0].clientY;
-    lpT = setTimeout(() => {
-      App._cancelTouchDrag?.(); // remove any drag ghost so it doesn't linger behind the menu
-      const idx = parseInt(item.dataset.index), entry = App.entries[idx]; if (!entry) return;
-      if (App.selected.has(idx) && App.selected.size > 1) showCtx(cx, cy, entry, true);
-      else { if (!App.selected.has(idx)) { App.selected.clear(); App.selected.add(idx); updateSelectionUI(); } showCtx(cx, cy, entry, false); }
-    }, 500);
-  }, { passive: true });
-  $('#grid').addEventListener('touchend', () => clearTimeout(lpT));
-  $('#grid').addEventListener('touchmove', () => clearTimeout(lpT));
+  // Mobile long-press menu is handled by the touch drag system (release in place → menu),
+  // so it no longer races with drag-to-reorder.
 
-  document.addEventListener('click', e => { if (!e.target.closest('#ctx-menu')) hideCtx(); });
+  document.addEventListener('click', e => { if (Date.now() - (App._ctxOpenedAt || 0) < 400) return; if (!e.target.closest('#ctx-menu')) hideCtx(); });
   // Clear selection when clicking empty space in main area
   $('#main').addEventListener('click', e => {
+    if (Date.now() - (App._ctxOpenedAt || 0) < 400) return;
     if (lassoState?.prevented || lassoState?.active) return;
     if (!e.target.closest('.grid-item') && !e.target.closest('.grid-check') && !e.target.closest('#ctx-menu')) {
       clearSelection();
