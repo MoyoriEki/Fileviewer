@@ -2201,20 +2201,18 @@ function initDragReorder() {
   // Touch D&D
   let tSrc = null, tClone = null, tLP = null;
   let tAutoScrollRAF = null, tLastTouchX = 0, tLastTouchY = 0;
-  let tStartX = 0, tStartY = 0, tMenuShown = false;
-  const ASCROLL_ZONE = 50, ASCROLL_SPEED = 8;
+  let tStartX = 0, tStartY = 0, tArmed = false;
+  const ASCROLL_ZONE = 64, ASCROLL_MAX_SPEED = 16;
   grid.addEventListener('touchstart', e => {
     const item = e.target.closest('.grid-item'); if (!item) return;
-    tStartX = e.touches[0].clientX; tStartY = e.touches[0].clientY; tMenuShown = false;
+    tStartX = e.touches[0].clientX; tStartY = e.touches[0].clientY; tArmed = false;
     tLP = setTimeout(() => {
-      // Long-press → show context menu. Dragging only starts if the finger then moves.
+      // Long-press arms the item: it gets selected, then releasing in place opens
+      // the context menu while moving the finger switches to drag-to-reorder/move.
       tSrc = parseInt(item.dataset.index);
       const entry = App.entries[tSrc]; if (!entry) return;
       if (!App.selected.has(tSrc)) { App.selected.clear(); App.selected.add(tSrc); updateSelectionUI(); }
-      const multi = App.selected.has(tSrc) && App.selected.size > 1;
-      tMenuShown = true;
-      App._ctxOpenedAt = Date.now();
-      showCtx(tStartX, tStartY, entry, multi);
+      tArmed = true;
     }, 450);
   }, { passive: true });
   grid.addEventListener('touchmove', e => {
@@ -2222,10 +2220,9 @@ function initDragReorder() {
     const movedFar = Math.abs(pt.clientX - tStartX) > 12 || Math.abs(pt.clientY - tStartY) > 12;
     if (!tClone) {
       if (!movedFar) return;
-      if (tMenuShown) {
-        // Finger moved after the menu opened → switch to drag-to-reorder
+      if (tArmed) {
+        // Long-press fired and the finger is now moving → start drag-to-reorder/move
         e.preventDefault();
-        hideCtx(); tMenuShown = false;
         const item = grid.querySelector('.grid-item[data-index="' + tSrc + '"]');
         if (!item) return;
         App._touchDragging = true;
@@ -2234,7 +2231,7 @@ function initDragReorder() {
         tClone.style.width = item.offsetWidth + 'px'; tClone.style.height = item.offsetHeight + 'px';
         document.body.appendChild(tClone); posC(pt);
       } else {
-        // Moved before the long-press fired → it's a scroll, cancel the pending menu
+        // Moved before the long-press fired → it's a scroll, cancel the pending long-press
         clearTimeout(tLP);
       }
       return;
@@ -2310,35 +2307,57 @@ function initDragReorder() {
       }
 
       cancelTouchDrag();
+      return;
+    }
+    // Released in place after a long-press (no drag started) → open the context menu
+    if (tArmed && tSrc !== null) {
+      const entry = App.entries[tSrc];
+      if (entry) {
+        const multi = App.selected.has(tSrc) && App.selected.size > 1;
+        App._ctxOpenedAt = Date.now();
+        showCtx(tStartX, tStartY, entry, multi);
+      }
+      tArmed = false; tSrc = null;
     }
   });
   function cancelTouchDrag() {
     clearTimeout(tLP);
     if (tClone) { tClone.remove(); tClone = null; }
     document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
-    tSrc = null; tMenuShown = false; App._touchDragging = false;
+    tSrc = null; tArmed = false; App._touchDragging = false;
     if (tAutoScrollRAF) { cancelAnimationFrame(tAutoScrollRAF); tAutoScrollRAF = null; }
   }
   grid.addEventListener('touchcancel', cancelTouchDrag);
   App._cancelTouchDrag = cancelTouchDrag;
   function posC(t) { if (tClone) { tClone.style.left = (t.clientX-40)+'px'; tClone.style.top = (t.clientY-40)+'px'; } }
+  // Auto-scroll speed for a finger at viewport-Y `y` inside a container spanning
+  // [top, bottom]. Returns 0 unless the finger is within ASCROLL_ZONE of an edge,
+  // then ramps from ~0 at the inner boundary up to ASCROLL_MAX_SPEED at the very
+  // edge. The ramp is what keeps it calm in the middle instead of lurching the
+  // moment the finger enters the zone.
+  function edgeScrollSpeed(y, top, bottom) {
+    if (y < top || y > bottom) return 0;
+    if (y < top + ASCROLL_ZONE) {
+      const t = (top + ASCROLL_ZONE - y) / ASCROLL_ZONE; // 0..1, 1 at the edge
+      return -Math.ceil(t * ASCROLL_MAX_SPEED);
+    }
+    if (y > bottom - ASCROLL_ZONE) {
+      const t = (y - (bottom - ASCROLL_ZONE)) / ASCROLL_ZONE; // 0..1, 1 at the edge
+      return Math.ceil(t * ASCROLL_MAX_SPEED);
+    }
+    return 0;
+  }
   function autoScrollStep() {
     if (!tClone) { tAutoScrollRAF = null; return; }
     const main = $('#main'), mr = main.getBoundingClientRect();
-    if (tLastTouchY < mr.top + ASCROLL_ZONE && tLastTouchY >= mr.top) {
-      main.scrollTop -= ASCROLL_SPEED;
-    } else if (tLastTouchY > mr.bottom - ASCROLL_ZONE && tLastTouchY <= mr.bottom) {
-      main.scrollTop += ASCROLL_SPEED;
-    }
+    const ms = edgeScrollSpeed(tLastTouchY, mr.top, mr.bottom);
+    if (ms) main.scrollTop += ms;
     const tl = $('#tree-list');
     if (tl) {
       const tr = tl.getBoundingClientRect();
       if (tLastTouchX >= tr.left && tLastTouchX <= tr.right) {
-        if (tLastTouchY < tr.top + ASCROLL_ZONE && tLastTouchY >= tr.top) {
-          tl.scrollTop -= ASCROLL_SPEED;
-        } else if (tLastTouchY > tr.bottom - ASCROLL_ZONE && tLastTouchY <= tr.bottom) {
-          tl.scrollTop += ASCROLL_SPEED;
-        }
+        const ts = edgeScrollSpeed(tLastTouchY, tr.top, tr.bottom);
+        if (ts) tl.scrollTop += ts;
       }
     }
     tAutoScrollRAF = requestAnimationFrame(autoScrollStep);
@@ -2732,7 +2751,9 @@ function setupEvents() {
   let lastTapT = 0, lastTapEl = null;
   $('#grid').addEventListener('click', e => {
     if (lassoState?.prevented) return;
-    
+    // Suppress the ghost click that follows opening the long-press context menu
+    if (Date.now() - (App._ctxOpenedAt || 0) < 400) return;
+
     const chk = e.target.closest('.grid-check');
     if (chk) { e.stopPropagation(); toggleSelect(parseInt(chk.dataset.check), true, false); return; }
 
