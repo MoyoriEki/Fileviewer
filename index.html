@@ -2144,6 +2144,9 @@ let dragSrcIdx = null;
 function initDragReorder() {
   const grid = $('#grid');
   grid.addEventListener('dragstart', e => {
+    // A touch long-press must never start a native HTML5 drag — that path fires
+    // touchcancel and breaks the touch state machine. Touch is handled separately.
+    if (App._touchActive) { e.preventDefault(); return; }
     const item = e.target.closest('.grid-item'); if (!item) { e.preventDefault(); return; }
     dragSrcIdx = parseInt(item.dataset.index);
     if (!App.selected.has(dragSrcIdx)) { App.selected.clear(); App.selected.add(dragSrcIdx); updateSelectionUI(); }
@@ -2201,7 +2204,7 @@ function initDragReorder() {
   // Touch D&D
   let tSrc = null, tClone = null, tLP = null;
   let tAutoScrollRAF = null, tLastTouchX = 0, tLastTouchY = 0;
-  let tStartX = 0, tStartY = 0, tArmed = false, tArmX = 0, tArmY = 0;
+  let tStartX = 0, tStartY = 0, tArmed = false, tArmX = 0, tArmY = 0, tNoDragEl = null;
   const ASCROLL_ZONE = 64, ASCROLL_MAX_SPEED = 16;
   // Movement thresholds (px):
   //  - SCROLL_CANCEL: before the long-press fires, a clear scroll this far from the
@@ -2223,6 +2226,13 @@ function initDragReorder() {
     // Only a single finger arms a gesture; a second finger (pinch/zoom) aborts it.
     if (e.touches.length !== 1) { clearTimeout(tLP); tArmed = false; App._touchActive = false; return; }
     App._touchActive = true;
+    // Disable native HTML5 drag on this item for the duration of the touch. On
+    // mobile, long-pressing a draggable="true" element starts a *native* drag,
+    // which fires dragstart (darkening the item via .dragging) and a touchcancel
+    // that kills our long-press menu / custom drag before touchend ever runs —
+    // and the stuck native-drag state then breaks every later gesture. The
+    // attribute is restored on release so mouse drag-and-drop still works.
+    tNoDragEl = item; item.draggable = false;
     tStartX = tLastTouchX = e.touches[0].clientX;
     tStartY = tLastTouchY = e.touches[0].clientY;
     tArmed = false;
@@ -2288,8 +2298,10 @@ function initDragReorder() {
   grid.addEventListener('touchend', async e => {
     clearTimeout(tLP);
     // The press is over: clear the touch-active flag the grid 'contextmenu' handler
-    // checks, so the next mouse right-click works normally.
+    // checks, so the next mouse right-click works normally, and re-enable native
+    // drag on the item for mouse users.
     App._touchActive = false;
+    if (tNoDragEl) { tNoDragEl.draggable = true; tNoDragEl = null; }
     if (tClone && tSrc !== null) {
       // Always run cancelTouchDrag() in finally: if any await/render below throws
       // we must still reset state and remove the ghost clone, or every later
@@ -2359,7 +2371,10 @@ function initDragReorder() {
   function cancelTouchDrag() {
     clearTimeout(tLP);
     if (tClone) { tClone.remove(); tClone = null; }
+    if (tNoDragEl) { tNoDragEl.draggable = true; tNoDragEl = null; }
     document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
+    // Also clear any native HTML5 drag state that a stray dragstart may have left.
+    dragSrcIdx = null;
     tSrc = null; tArmed = false; App._touchActive = false; App._touchDragging = false;
     if (tAutoScrollRAF) { cancelAnimationFrame(tAutoScrollRAF); tAutoScrollRAF = null; }
   }
