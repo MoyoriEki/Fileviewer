@@ -915,7 +915,7 @@ function saveSetting(key, value) {
 // Bumped by hand on each change so the sidebar shows which build is actually
 // running — handy for confirming a deploy reached the device. The SW cache id
 // (filer-<sha>) appended next to it changes automatically on every deploy.
-const APP_VERSION = 'v2026.05.30-3';
+const APP_VERSION = 'v2026.05.30-4';
 async function showAppVersion() {
   const el = $('#app-version'); if (!el) return;
   el.textContent = APP_VERSION;
@@ -2224,15 +2224,16 @@ function initDragReorder() {
   let tStartX = 0, tStartY = 0, tArmed = false, tArmX = 0, tArmY = 0, tNoDragEl = null;
   const ASCROLL_ZONE = 60, ASCROLL_MAX_SPEED = 16, ASCROLL_DEAD = 0.35;
   // Movement thresholds (px):
-  //  - SCROLL_CANCEL: before the long-press fires, a clear scroll this far from the
-  //    touch start cancels the pending menu. Kept generous so a still-ish finger
-  //    still arms.
+  //  - SCROLL_CANCEL: before the long-press fires, a scroll this far from the touch
+  //    start cancels the pending menu. Kept small so any real swipe-to-scroll bows
+  //    out of arming quickly — otherwise we'd arm mid-scroll and then lock the
+  //    page's scroll (see the touchmove handler), which felt like the scroll
+  //    "turning into" a stuck drag.
   //  - DRAG_START: after arming, the finger must move this far *from where it was
   //    when the menu armed* to switch from "open menu on release" to drag. Measuring
   //    from the arm point (not the touch start) is what keeps "release in place →
-  //    menu" reliable: drift accumulated while pressing no longer counts toward it,
-  //    so a finger that wandered up to SCROLL_CANCEL still won't instantly drag.
-  const SCROLL_CANCEL = 24, DRAG_START = 16;
+  //    menu" reliable: drift accumulated while pressing no longer counts toward it.
+  const SCROLL_CANCEL = 10, DRAG_START = 16;
   grid.addEventListener('touchstart', e => {
     const item = e.target.closest('.grid-item'); if (!item) return;
     // Self-heal: if a previous gesture left drag state behind (e.g. an error
@@ -2270,10 +2271,13 @@ function initDragReorder() {
     tLastTouchX = pt.clientX; tLastTouchY = pt.clientY;
     if (!tClone) {
       if (tArmed) {
-        // Long-press fired: only a deliberate move *from the arm point* switches to
-        // drag. Smaller jitter is ignored so releasing in place reliably opens the menu.
-        if (Math.max(Math.abs(pt.clientX - tArmX), Math.abs(pt.clientY - tArmY)) <= DRAG_START) return;
+        // Armed = we've committed to a press, not a scroll. Lock out native
+        // scrolling on *every* move from here on, so the page can't keep scrolling
+        // underneath the gesture while we decide menu-vs-drag (that leftover native
+        // scroll was the "swipe became a stuck drag" bug). A small move still means
+        // "release in place → menu"; only past DRAG_START do we begin dragging.
         e.preventDefault();
+        if (Math.max(Math.abs(pt.clientX - tArmX), Math.abs(pt.clientY - tArmY)) <= DRAG_START) return;
         const item = grid.querySelector('.grid-item[data-index="' + tSrc + '"]');
         if (!item) return;
         App._touchDragging = true;
