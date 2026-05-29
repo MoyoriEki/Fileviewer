@@ -2211,6 +2211,11 @@ function initDragReorder() {
   const SCROLL_CANCEL = 24, DRAG_START = 18;
   grid.addEventListener('touchstart', e => {
     const item = e.target.closest('.grid-item'); if (!item) return;
+    // Self-heal: if a previous gesture left drag state behind (e.g. an error
+    // mid-move skipped cleanup), clear it so a fresh single-finger touch always
+    // starts clean. Without this the leftover clone swallows every later
+    // long-press into the drag path, so the menu/auto-scroll silently die.
+    if (e.touches.length === 1 && (tClone || App._touchDragging)) cancelTouchDrag();
     tStartX = e.touches[0].clientX; tStartY = e.touches[0].clientY; tArmed = false;
     tLP = setTimeout(() => {
       // Long-press arms the item: it gets selected, then releasing in place opens
@@ -2268,53 +2273,58 @@ function initDragReorder() {
   grid.addEventListener('touchend', async e => {
     clearTimeout(tLP);
     if (tClone && tSrc !== null) {
-      const pt = e.changedTouches[0];
-      const items = App.selected.size > 0
-        ? [...App.selected].map(i => App.entries[i]).filter(Boolean)
-        : (App.entries[tSrc] ? [App.entries[tSrc]] : []);
+      // Always run cancelTouchDrag() in finally: if any await/render below throws
+      // we must still reset state and remove the ghost clone, or every later
+      // gesture stays broken until reload.
+      try {
+        const pt = e.changedTouches[0];
+        const items = App.selected.size > 0
+          ? [...App.selected].map(i => App.entries[i]).filter(Boolean)
+          : (App.entries[tSrc] ? [App.entries[tSrc]] : []);
 
-      let handled = false;
+        let handled = false;
 
-      // Check tree row or fav-item
-      const elUnder = document.elementFromPoint(pt.clientX, pt.clientY);
-      const treeRow = elUnder?.closest('.tree-row');
-      const favItem = !treeRow ? elUnder?.closest('.fav-item') : null;
-      if ((treeRow || favItem) && items.length) {
-        const destPath = treeRow ? treeRow.dataset.path : favItem.dataset.path;
-        const invalid = items.some(it => { const rel = entryRelPath(it); return destPath === parentPath(rel) || (it['.tag']==='folder' && (destPath===rel||destPath.startsWith(rel+'/'))); });
-        if (!invalid) {
-          toast('移動中...');
-          await moveItemsWithUndo(items, destPath);
-          App.selected.clear(); updateSelBadge(); loadFolder(App.currentPath); loadTree();
-        } else toast('移動先が無効です');
-        handled = true;
-      }
+        // Check tree row or fav-item
+        const elUnder = document.elementFromPoint(pt.clientX, pt.clientY);
+        const treeRow = elUnder?.closest('.tree-row');
+        const favItem = !treeRow ? elUnder?.closest('.fav-item') : null;
+        if ((treeRow || favItem) && items.length) {
+          const destPath = treeRow ? treeRow.dataset.path : favItem.dataset.path;
+          const invalid = items.some(it => { const rel = entryRelPath(it); return destPath === parentPath(rel) || (it['.tag']==='folder' && (destPath===rel||destPath.startsWith(rel+'/'))); });
+          if (!invalid) {
+            toast('移動中...');
+            await moveItemsWithUndo(items, destPath);
+            App.selected.clear(); updateSelBadge(); loadFolder(App.currentPath); loadTree();
+          } else toast('移動先が無効です');
+          handled = true;
+        }
 
-      // Check grid folder
-      if (!handled) {
-        const under = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.grid-item');
-        if (under && under.dataset.tag === 'folder' && items.length) {
-          const folderIdx = parseInt(under.dataset.index);
-          if (!App.selected.has(folderIdx)) {
-            const destEntry = App.entries[folderIdx];
-            const destPath = entryRelPath(destEntry);
-            const invalid = items.some(it => it === destEntry || (it['.tag']==='folder' && destPath.startsWith(entryRelPath(it)+'/')));
-            if (!invalid) {
-              toast('移動中...');
-              await moveItemsWithUndo(items, destPath);
-              App.selected.clear(); updateSelBadge(); loadFolder(App.currentPath); loadTree();
-            } else toast('移動先が無効です');
-            handled = true;
+        // Check grid folder
+        if (!handled) {
+          const under = document.elementFromPoint(pt.clientX, pt.clientY)?.closest('.grid-item');
+          if (under && under.dataset.tag === 'folder' && items.length) {
+            const folderIdx = parseInt(under.dataset.index);
+            if (!App.selected.has(folderIdx)) {
+              const destEntry = App.entries[folderIdx];
+              const destPath = entryRelPath(destEntry);
+              const invalid = items.some(it => it === destEntry || (it['.tag']==='folder' && destPath.startsWith(entryRelPath(it)+'/')));
+              if (!invalid) {
+                toast('移動中...');
+                await moveItemsWithUndo(items, destPath);
+                App.selected.clear(); updateSelBadge(); loadFolder(App.currentPath); loadTree();
+              } else toast('移動先が無効です');
+              handled = true;
+            }
+          }
+          // Grid file reorder
+          if (!handled && under && under.dataset.tag === 'file') {
+            const di = parseInt(under.dataset.index), r = under.getBoundingClientRect();
+            if (di !== tSrc) reorderEntries(di, pt.clientX < r.left + r.width/2);
           }
         }
-        // Grid file reorder
-        if (!handled && under && under.dataset.tag === 'file') {
-          const di = parseInt(under.dataset.index), r = under.getBoundingClientRect();
-          if (di !== tSrc) reorderEntries(di, pt.clientX < r.left + r.width/2);
-        }
+      } finally {
+        cancelTouchDrag();
       }
-
-      cancelTouchDrag();
       return;
     }
     // Released in place after a long-press (no drag started) → open the context menu

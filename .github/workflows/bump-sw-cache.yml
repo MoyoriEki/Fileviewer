@@ -1,0 +1,46 @@
+name: Bump SW cache
+
+# Whenever the app shell changes on main, rewrite the service worker cache
+# version to the commit SHA. The SW's activate handler purges any cache whose
+# name != CACHE, so bumping this is what actually pushes updates to installed
+# PWAs. Doing it automatically means we can never forget the version bump again.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'manifest.json'
+      - 'icon-*.png'
+
+permissions:
+  contents: write
+
+# Avoid overlapping runs racing to push sw.js
+concurrency:
+  group: bump-sw-cache
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set cache version to commit SHA
+        run: |
+          sha="${GITHUB_SHA::7}"
+          sed -i -E "s/const CACHE = '[^']+';/const CACHE = 'filer-${sha}';/" sw.js
+          echo "sw.js now:" && head -n 1 sw.js
+
+      - name: Commit and push if changed
+        run: |
+          if git diff --quiet -- sw.js; then
+            echo "sw.js already up to date, nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sw.js
+          git commit -m "chore: bump SW cache to ${GITHUB_SHA::7} [skip ci]"
+          git push
