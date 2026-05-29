@@ -2201,22 +2201,31 @@ function initDragReorder() {
   // Touch D&D
   let tSrc = null, tClone = null, tLP = null;
   let tAutoScrollRAF = null, tLastTouchX = 0, tLastTouchY = 0;
-  let tStartX = 0, tStartY = 0, tArmed = false;
+  let tStartX = 0, tStartY = 0, tArmed = false, tArmX = 0, tArmY = 0;
   const ASCROLL_ZONE = 64, ASCROLL_MAX_SPEED = 16;
-  // Movement thresholds (px from the touch start point):
-  //  - SCROLL_CANCEL: before the long-press fires, only a clear scroll this far
-  //    cancels the pending menu. Kept generous so a still-ish finger still arms.
-  //  - DRAG_START: after arming, the finger must move at least this far to switch
-  //    from "open menu on release" to drag-to-reorder/move.
-  const SCROLL_CANCEL = 24, DRAG_START = 18;
+  // Movement thresholds (px):
+  //  - SCROLL_CANCEL: before the long-press fires, a clear scroll this far from the
+  //    touch start cancels the pending menu. Kept generous so a still-ish finger
+  //    still arms.
+  //  - DRAG_START: after arming, the finger must move this far *from where it was
+  //    when the menu armed* to switch from "open menu on release" to drag. Measuring
+  //    from the arm point (not the touch start) is what keeps "release in place →
+  //    menu" reliable: drift accumulated while pressing no longer counts toward it,
+  //    so a finger that wandered up to SCROLL_CANCEL still won't instantly drag.
+  const SCROLL_CANCEL = 24, DRAG_START = 16;
   grid.addEventListener('touchstart', e => {
     const item = e.target.closest('.grid-item'); if (!item) return;
     // Self-heal: if a previous gesture left drag state behind (e.g. an error
     // mid-move skipped cleanup), clear it so a fresh single-finger touch always
     // starts clean. Without this the leftover clone swallows every later
     // long-press into the drag path, so the menu/auto-scroll silently die.
-    if (e.touches.length === 1 && (tClone || App._touchDragging)) cancelTouchDrag();
-    tStartX = e.touches[0].clientX; tStartY = e.touches[0].clientY; tArmed = false;
+    if (tClone || App._touchDragging) cancelTouchDrag();
+    // Only a single finger arms a gesture; a second finger (pinch/zoom) aborts it.
+    if (e.touches.length !== 1) { clearTimeout(tLP); tArmed = false; App._touchActive = false; return; }
+    App._touchActive = true;
+    tStartX = tLastTouchX = e.touches[0].clientX;
+    tStartY = tLastTouchY = e.touches[0].clientY;
+    tArmed = false;
     tLP = setTimeout(() => {
       // Long-press arms the item: it gets selected, then releasing in place opens
       // the context menu while moving the finger switches to drag-to-reorder/move.
@@ -2224,16 +2233,19 @@ function initDragReorder() {
       const entry = App.entries[tSrc]; if (!entry) return;
       if (!App.selected.has(tSrc)) { App.selected.clear(); App.selected.add(tSrc); updateSelectionUI(); }
       tArmed = true;
+      // Re-anchor the drag threshold at the finger's position *now*, so only a new
+      // deliberate move starts a drag — drift accumulated during the press doesn't.
+      tArmX = tLastTouchX; tArmY = tLastTouchY;
     }, 450);
   }, { passive: true });
   grid.addEventListener('touchmove', e => {
-    const pt = e.touches[0];
-    const dist = Math.max(Math.abs(pt.clientX - tStartX), Math.abs(pt.clientY - tStartY));
+    const pt = e.touches[0]; if (!pt) return;
+    tLastTouchX = pt.clientX; tLastTouchY = pt.clientY;
     if (!tClone) {
       if (tArmed) {
-        // Long-press fired: only a deliberate move switches to drag. Smaller jitter
-        // is ignored so releasing in place reliably opens the context menu.
-        if (dist <= DRAG_START) return;
+        // Long-press fired: only a deliberate move *from the arm point* switches to
+        // drag. Smaller jitter is ignored so releasing in place reliably opens the menu.
+        if (Math.max(Math.abs(pt.clientX - tArmX), Math.abs(pt.clientY - tArmY)) <= DRAG_START) return;
         e.preventDefault();
         const item = grid.querySelector('.grid-item[data-index="' + tSrc + '"]');
         if (!item) return;
@@ -2242,15 +2254,18 @@ function initDragReorder() {
         tClone = item.cloneNode(true); tClone.className = 'touch-drag-clone';
         tClone.style.width = item.offsetWidth + 'px'; tClone.style.height = item.offsetHeight + 'px';
         document.body.appendChild(tClone); posC(pt);
+        // Start auto-scroll for the whole drag now: once the finger pins itself at
+        // an edge it stops firing touchmove, so we can't rely on a later move to
+        // kick it off.
+        if (!tAutoScrollRAF) tAutoScrollRAF = requestAnimationFrame(autoScrollStep);
       } else {
         // Before the long-press fires, a clear scroll cancels the pending menu;
         // small drift is tolerated so the finger can settle and still arm.
-        if (dist > SCROLL_CANCEL) clearTimeout(tLP);
+        if (Math.max(Math.abs(pt.clientX - tStartX), Math.abs(pt.clientY - tStartY)) > SCROLL_CANCEL) clearTimeout(tLP);
       }
       return;
     }
     e.preventDefault(); posC(pt);
-    tLastTouchX = pt.clientX; tLastTouchY = pt.clientY;
     if (!tAutoScrollRAF) tAutoScrollRAF = requestAnimationFrame(autoScrollStep);
     document.querySelectorAll('.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('drag-over-before','drag-over-after','drop-target'));
     const elUnder = document.elementFromPoint(pt.clientX, pt.clientY);
@@ -2272,6 +2287,9 @@ function initDragReorder() {
   }, { passive: false });
   grid.addEventListener('touchend', async e => {
     clearTimeout(tLP);
+    // The press is over: clear the touch-active flag the grid 'contextmenu' handler
+    // checks, so the next mouse right-click works normally.
+    App._touchActive = false;
     if (tClone && tSrc !== null) {
       // Always run cancelTouchDrag() in finally: if any await/render below throws
       // we must still reset state and remove the ghost clone, or every later
@@ -2342,26 +2360,27 @@ function initDragReorder() {
     clearTimeout(tLP);
     if (tClone) { tClone.remove(); tClone = null; }
     document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target'));
-    tSrc = null; tArmed = false; App._touchDragging = false;
+    tSrc = null; tArmed = false; App._touchActive = false; App._touchDragging = false;
     if (tAutoScrollRAF) { cancelAnimationFrame(tAutoScrollRAF); tAutoScrollRAF = null; }
   }
   grid.addEventListener('touchcancel', cancelTouchDrag);
   App._cancelTouchDrag = cancelTouchDrag;
   function posC(t) { if (tClone) { tClone.style.left = (t.clientX-40)+'px'; tClone.style.top = (t.clientY-40)+'px'; } }
   // Auto-scroll speed for a finger at viewport-Y `y` inside a container spanning
-  // [top, bottom]. Returns 0 unless the finger is within ASCROLL_ZONE of an edge,
-  // then ramps from ~0 at the inner boundary up to ASCROLL_MAX_SPEED at the very
-  // edge. The ramp is what keeps it calm in the middle instead of lurching the
-  // moment the finger enters the zone.
+  // [top, bottom]. Returns 0 only in the calm middle band; within ASCROLL_ZONE of
+  // an edge it ramps from ~0 at the inner boundary up to ASCROLL_MAX_SPEED at the
+  // very edge, and *stays* at max speed past the edge. Clamping past the edge to
+  // max (instead of returning 0) is the fix for the common case where the finger
+  // pins itself right at — or just beyond — the container boundary: that's exactly
+  // when you most want it to keep scrolling, not stop dead.
   function edgeScrollSpeed(y, top, bottom) {
-    if (y < top || y > bottom) return 0;
-    if (y < top + ASCROLL_ZONE) {
-      const t = (top + ASCROLL_ZONE - y) / ASCROLL_ZONE; // 0..1, 1 at the edge
-      return -Math.ceil(t * ASCROLL_MAX_SPEED);
-    }
     if (y > bottom - ASCROLL_ZONE) {
-      const t = (y - (bottom - ASCROLL_ZONE)) / ASCROLL_ZONE; // 0..1, 1 at the edge
+      const t = Math.min(1, (y - (bottom - ASCROLL_ZONE)) / ASCROLL_ZONE); // 0..1, clamped past the edge
       return Math.ceil(t * ASCROLL_MAX_SPEED);
+    }
+    if (y < top + ASCROLL_ZONE) {
+      const t = Math.min(1, (top + ASCROLL_ZONE - y) / ASCROLL_ZONE); // 0..1, clamped past the edge
+      return -Math.ceil(t * ASCROLL_MAX_SPEED);
     }
     return 0;
   }
@@ -2835,6 +2854,10 @@ function setupEvents() {
   // Context menu
   $('#grid').addEventListener('contextmenu', e => {
     const item = e.target.closest('.grid-item'); if (!item) return; e.preventDefault();
+    // A touch long-press also fires a native 'contextmenu' on some browsers. Let the
+    // touch state machine own that case (release-in-place → menu) so the two paths
+    // can't race and double-open the menu mid-press; here we only handle mouse.
+    if (App._touchActive) return;
     const idx = parseInt(item.dataset.index), entry = App.entries[idx]; if (!entry) return;
     // If right-clicking a selected item with multi-selection, show multi menu
     if (App.selected.has(idx) && App.selected.size > 1) { showCtx(e.clientX, e.clientY, entry, true); }
@@ -2852,7 +2875,14 @@ function setupEvents() {
       clearSelection();
     }
   });
-  $('#ctx-menu').addEventListener('click', e => { const item = e.target.closest('.ctx-item'); if (item) doCtx(item.dataset.action); });
+  $('#ctx-menu').addEventListener('click', e => {
+    // When a long-press opens the menu under the finger, the synthetic click that
+    // follows touchend lands on whatever item is beneath it. Swallow that ghost
+    // click (same window the other handlers use) so the menu doesn't instantly
+    // fire an action; a real tap comes well after this window.
+    if (Date.now() - (App._ctxOpenedAt || 0) < 400) return;
+    const item = e.target.closest('.ctx-item'); if (item) doCtx(item.dataset.action);
+  });
 
   // Rename modal
   $('#rename-ok').onclick = execRename; $('#rename-cancel').onclick = () => $('#modal-rename').classList.remove('show');
