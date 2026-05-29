@@ -2203,6 +2203,12 @@ function initDragReorder() {
   let tAutoScrollRAF = null, tLastTouchX = 0, tLastTouchY = 0;
   let tStartX = 0, tStartY = 0, tArmed = false;
   const ASCROLL_ZONE = 64, ASCROLL_MAX_SPEED = 16;
+  // Movement thresholds (px from the touch start point):
+  //  - SCROLL_CANCEL: before the long-press fires, only a clear scroll this far
+  //    cancels the pending menu. Kept generous so a still-ish finger still arms.
+  //  - DRAG_START: after arming, the finger must move at least this far to switch
+  //    from "open menu on release" to drag-to-reorder/move.
+  const SCROLL_CANCEL = 24, DRAG_START = 18;
   grid.addEventListener('touchstart', e => {
     const item = e.target.closest('.grid-item'); if (!item) return;
     tStartX = e.touches[0].clientX; tStartY = e.touches[0].clientY; tArmed = false;
@@ -2217,11 +2223,12 @@ function initDragReorder() {
   }, { passive: true });
   grid.addEventListener('touchmove', e => {
     const pt = e.touches[0];
-    const movedFar = Math.abs(pt.clientX - tStartX) > 12 || Math.abs(pt.clientY - tStartY) > 12;
+    const dist = Math.max(Math.abs(pt.clientX - tStartX), Math.abs(pt.clientY - tStartY));
     if (!tClone) {
-      if (!movedFar) return;
       if (tArmed) {
-        // Long-press fired and the finger is now moving → start drag-to-reorder/move
+        // Long-press fired: only a deliberate move switches to drag. Smaller jitter
+        // is ignored so releasing in place reliably opens the context menu.
+        if (dist <= DRAG_START) return;
         e.preventDefault();
         const item = grid.querySelector('.grid-item[data-index="' + tSrc + '"]');
         if (!item) return;
@@ -2231,8 +2238,9 @@ function initDragReorder() {
         tClone.style.width = item.offsetWidth + 'px'; tClone.style.height = item.offsetHeight + 'px';
         document.body.appendChild(tClone); posC(pt);
       } else {
-        // Moved before the long-press fired → it's a scroll, cancel the pending long-press
-        clearTimeout(tLP);
+        // Before the long-press fires, a clear scroll cancels the pending menu;
+        // small drift is tolerated so the finger can settle and still arm.
+        if (dist > SCROLL_CANCEL) clearTimeout(tLP);
       }
       return;
     }
