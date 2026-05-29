@@ -1,4 +1,4 @@
-const CACHE = 'filer-v12';
+const CACHE = 'filer-v13';
 const PRECACHE = [
   './',
   './manifest.json',
