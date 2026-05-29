@@ -915,7 +915,7 @@ function saveSetting(key, value) {
 // Bumped by hand on each change so the sidebar shows which build is actually
 // running — handy for confirming a deploy reached the device. The SW cache id
 // (filer-<sha>) appended next to it changes automatically on every deploy.
-const APP_VERSION = 'v2026.05.30-2';
+const APP_VERSION = 'v2026.05.30-3';
 async function showAppVersion() {
   const el = $('#app-version'); if (!el) return;
   el.textContent = APP_VERSION;
@@ -2222,7 +2222,7 @@ function initDragReorder() {
   let tSrc = null, tClone = null, tLP = null;
   let tAutoScrollRAF = null, tLastTouchX = 0, tLastTouchY = 0;
   let tStartX = 0, tStartY = 0, tArmed = false, tArmX = 0, tArmY = 0, tNoDragEl = null;
-  const ASCROLL_ZONE = 64, ASCROLL_MAX_SPEED = 16;
+  const ASCROLL_ZONE = 60, ASCROLL_MAX_SPEED = 16, ASCROLL_DEAD = 0.35;
   // Movement thresholds (px):
   //  - SCROLL_CANCEL: before the long-press fires, a clear scroll this far from the
   //    touch start cancels the pending menu. Kept generous so a still-ish finger
@@ -2399,22 +2399,22 @@ function initDragReorder() {
   App._cancelTouchDrag = cancelTouchDrag;
   function posC(t) { if (tClone) { tClone.style.left = (t.clientX-40)+'px'; tClone.style.top = (t.clientY-40)+'px'; } }
   // Auto-scroll speed for a finger at viewport-Y `y` inside a container spanning
-  // [top, bottom]. Returns 0 only in the calm middle band; within ASCROLL_ZONE of
-  // an edge it ramps from ~0 at the inner boundary up to ASCROLL_MAX_SPEED at the
-  // very edge, and *stays* at max speed past the edge. Clamping past the edge to
-  // max (instead of returning 0) is the fix for the common case where the finger
-  // pins itself right at — or just beyond — the container boundary: that's exactly
-  // when you most want it to keep scrolling, not stop dead.
+  // [top, bottom]. `t` is how far the finger is into an edge zone (0 at the inner
+  // boundary, 1 at the edge, clamped to 1 past it). The inner ASCROLL_DEAD slice of
+  // the zone is a dead band that returns 0 — without it, the old Math.ceil ramp
+  // crept at 1px/frame across the *whole* 60px zone, so the page scrolled while the
+  // finger was nowhere near the edge and oscillating up/down jittered. Past the dead
+  // band the speed grows quadratically (gentle, then quick), and stays at max past
+  // the edge so a finger pinned at — or just beyond — the boundary keeps scrolling.
   function edgeScrollSpeed(y, top, bottom) {
-    if (y > bottom - ASCROLL_ZONE) {
-      const t = Math.min(1, (y - (bottom - ASCROLL_ZONE)) / ASCROLL_ZONE); // 0..1, clamped past the edge
-      return Math.ceil(t * ASCROLL_MAX_SPEED);
-    }
-    if (y < top + ASCROLL_ZONE) {
-      const t = Math.min(1, (top + ASCROLL_ZONE - y) / ASCROLL_ZONE); // 0..1, clamped past the edge
-      return -Math.ceil(t * ASCROLL_MAX_SPEED);
-    }
-    return 0;
+    let dir = 0, t = 0;
+    if (y > bottom - ASCROLL_ZONE) { dir = 1; t = (y - (bottom - ASCROLL_ZONE)) / ASCROLL_ZONE; }
+    else if (y < top + ASCROLL_ZONE) { dir = -1; t = (top + ASCROLL_ZONE - y) / ASCROLL_ZONE; }
+    else return 0;
+    t = Math.min(1, t);
+    if (t <= ASCROLL_DEAD) return 0;
+    const r = (t - ASCROLL_DEAD) / (1 - ASCROLL_DEAD); // 0..1 across the live part of the zone
+    return dir * Math.round(r * r * ASCROLL_MAX_SPEED);
   }
   function autoScrollStep() {
     if (!tClone) { tAutoScrollRAF = null; return; }
