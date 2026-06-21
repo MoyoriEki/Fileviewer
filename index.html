@@ -909,13 +909,60 @@ function saveSetting(key, value) {
   else saveSettings();
 }
 
+// Copy a merged settings snapshot into App state (favorites + custom sort).
+// Sidebar visibility is intentionally left out: it's a scalar without a
+// timestamp, so re-syncing it could flip the panel based on another device.
+function applyLoadedSettings(s) {
+  App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
+  App.favorites = s.favorites;
+  App.favoritesUpdatedAt = s.favoritesUpdatedAt || 0;
+  App.customOrders = s.customOrders || {};
+  App.customPresets = s.customPresets || {};
+  App.folderSortModes = s.folderSortModes || {};
+  App.foldersUpdatedAt = s.foldersUpdatedAt || {};
+}
+
+// Re-fetch cloud settings and refresh favorites + sort UI, without touching the
+// file grid. Returns false when not connected. Used by the refresh button and
+// the on-focus/online auto re-sync so the custom sort order stays in sync after
+// the initial load (loadSettings otherwise only runs at startup/connect).
+let lastResyncAt = 0;
+async function resyncSettings() {
+  if (!App.storage || !App.storage.isConnected) return false;
+  const s = await loadSettings();
+  applyLoadedSettings(s);
+  lastResyncAt = Date.now();
+  renderFavorites();
+  updateSortSelectUI();
+  return true;
+}
+
+// Re-apply the current sort mode/custom order to the already-loaded entries and
+// repaint, without re-listing the folder over the network.
+function reapplyCurrentOrder() {
+  if (!App.entries || !App.entries.length) return;
+  App.entries = sortEntries(App.entries);
+  App.entries = applyModeOrder(App.entries);
+  renderGrid(App.navGen);
+}
+
+// Pull settings from the cloud when the app returns to the foreground or the
+// network comes back, so reorders made on another device show up without a
+// hard reload. Debounced to avoid hammering on rapid focus toggles.
+async function autoResync() {
+  if (document.visibilityState !== 'visible') return;
+  if (!App.storage || !App.storage.isConnected) return;
+  if (Date.now() - lastResyncAt < 3000) return;
+  if (await resyncSettings()) reapplyCurrentOrder();
+}
+
 // ════════════════════════════════════════
 // Init
 // ════════════════════════════════════════
 // Bumped by hand on each change so the sidebar shows which build is actually
 // running — handy for confirming a deploy reached the device. The SW cache id
 // (filer-<sha>) appended next to it changes automatically on every deploy.
-const APP_VERSION = 'v2026.05.30-4';
+const APP_VERSION = 'v2026.06.21-1';
 async function showAppVersion() {
   const el = $('#app-version'); if (!el) return;
   el.textContent = APP_VERSION;
@@ -964,13 +1011,7 @@ async function init() {
     $('#app').classList.add('active');
     // Load cloud settings (merge with local)
     const s = await loadSettings();
-    App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
-    App.favorites = s.favorites;
-    App.favoritesUpdatedAt = s.favoritesUpdatedAt || 0;
-    App.customOrders = s.customOrders || {};
-    App.customPresets = s.customPresets || {};
-    App.folderSortModes = s.folderSortModes || {};
-    App.foldersUpdatedAt = s.foldersUpdatedAt || {};
+    applyLoadedSettings(s); lastResyncAt = Date.now();
     if (s.sidebarHidden) $('#sidebar').classList.add('hidden'); else $('#sidebar').classList.remove('hidden');
     renderFavorites(); loadTree();
     await navigate(pathFromHash() ?? s.lastPath ?? '', true);
@@ -979,18 +1020,16 @@ async function init() {
   if (App.storage.isConnected) {
     $('#connection-screen').style.display = 'none'; $('#app').classList.add('active');
     const s = await loadSettings();
-    App.sortMode = s.sortMode; $('#sort-select').value = s.sortMode;
-    App.favorites = s.favorites;
-    App.favoritesUpdatedAt = s.favoritesUpdatedAt || 0;
-    App.customOrders = s.customOrders || {};
-    App.customPresets = s.customPresets || {};
-    App.folderSortModes = s.folderSortModes || {};
-    App.foldersUpdatedAt = s.foldersUpdatedAt || {};
+    applyLoadedSettings(s); lastResyncAt = Date.now();
     if (s.sidebarHidden) $('#sidebar').classList.add('hidden'); else $('#sidebar').classList.remove('hidden');
     renderFavorites(); loadTree();
     navigate(pathFromHash() ?? s.lastPath ?? '', true);
   }
   setupEvents();
+  // Keep custom sort in sync after the initial load: re-pull cloud settings when
+  // the app regains focus or the network returns.
+  document.addEventListener('visibilitychange', autoResync);
+  window.addEventListener('online', autoResync);
 }
 
 // ── History ──
@@ -2701,7 +2740,7 @@ function setupEvents() {
   $('#btn-back').onclick = () => history.back();
   $('#btn-forward').onclick = () => history.forward();
   $('#btn-up').onclick = () => { if (App.currentPath) navigate(parentPath(App.currentPath)); };
-  $('#btn-refresh').onclick = () => loadFolder(App.currentPath);
+  $('#btn-refresh').onclick = async () => { await resyncSettings(); loadFolder(App.currentPath); };
   $('#btn-trash').onclick = openTrash;
   $('#btn-settings').onclick = () => { updateSettingsThemeBtn(); $('#modal-settings').classList.add('show'); };
   $('#settings-close').onclick = () => $('#modal-settings').classList.remove('show');
