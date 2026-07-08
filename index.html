@@ -1147,7 +1147,7 @@ async function loadThumb(idx, gen) {
   if (cached) { const u = URL.createObjectURL(new Blob([cached], { type: 'image/jpeg' })); App.thumbCache[ck] = u; setThumbImg(idx, gen, u); return; }
   tqRun(async () => { const blob = await fetchThumbnail(entry.path_display || entry.path_lower); const buf = await blob.arrayBuffer(); const u = URL.createObjectURL(new Blob([buf], { type: 'image/jpeg' })); App.thumbCache[ck] = u; IDB.put('thumbs', ck, buf); setThumbImg(idx, gen, u); }).catch(() => { if (gen === App.navGen) { const el = document.getElementById('thumb-' + idx); if (el) el.innerHTML = '<span class="file-icon">🖼</span>'; } });
 }
-function setThumbImg(idx, gen, u) { if (gen !== App.navGen) return; const el = document.getElementById('thumb-' + idx); if (el) el.innerHTML = `<img src="${u}" alt="">`; }
+function setThumbImg(idx, gen, u) { if (gen !== App.navGen) return; const el = document.getElementById('thumb-' + idx); if (el) el.innerHTML = `<img src="${u}" alt="" draggable="false">`; }
 
 // ── Folder Previews ──
 async function loadFolderPreviews(gen) {
@@ -2207,7 +2207,16 @@ function initDragReorder() {
     dragSrcIdx = parseInt(item.dataset.index);
     if (!App.selected.has(dragSrcIdx)) { App.selected.clear(); App.selected.add(dragSrcIdx); updateSelectionUI(); }
     item.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', '');
+    // 内部D&D（フォルダへ移動・並べ替え）はdragSrcIdxで処理するためtext/plainは使わないが、
+    // 別窓のプロットボード（Phase 4.5連携）へは文字列しか渡せない（File実体は渡せない）ので、
+    // ファイルの場合はDropboxパスをJSONで載せる。プロットボードが自力で取得・取り込みする。
+    const entry = App.entries[dragSrcIdx];
+    let payload = '';
+    if (entry && entry['.tag'] === 'file') {
+      payload = JSON.stringify({ v: 1, source: 'fileviewer', dropboxPath: entry.path_display || entry.path_lower, name: entry.name });
+    }
+    // 内部は'move'、外部窓へは'copy'。両方許可するcopyMoveにしないと別窓側でdropが弾かれる
+    e.dataTransfer.effectAllowed = 'copyMove'; e.dataTransfer.setData('text/plain', payload);
   });
   grid.addEventListener('dragend', e => { document.querySelectorAll('.dragging,.drag-over-before,.drag-over-after,.drop-target').forEach(el => el.classList.remove('dragging','drag-over-before','drag-over-after','drop-target')); dragSrcIdx = null; });
   grid.addEventListener('dragover', e => {
