@@ -755,6 +755,14 @@ function entryRelPath(entry) { const a = entry.path_display || entry.path_lower 
 const TQ = { running: 0, max: 6, q: [] };
 function tqRun(fn) { return new Promise((res, rej) => { const exec = () => { TQ.running++; fn().then(res, rej).finally(() => { TQ.running--; if (TQ.q.length) TQ.q.shift()(); }); }; TQ.running < TQ.max ? exec() : TQ.q.push(exec); }); }
 
+// Building a .clip thumbnail is several sequential ranged reads plus a parse,
+// where a Dropbox thumbnail is one short request. Sharing one queue let a
+// handful of .clip files hold every slot, and images in the same folder took
+// roughly twice as long to appear. Give the slow path its own lane so the
+// cheap one always has all of TQ to itself.
+const CQ = { running: 0, max: 3, q: [] };
+function cqRun(fn) { return new Promise((res, rej) => { const exec = () => { CQ.running++; fn().then(res, rej).finally(() => { CQ.running--; if (CQ.q.length) CQ.q.shift()(); }); }; CQ.running < CQ.max ? exec() : CQ.q.push(exec); }); }
+
 // ── CLIP STUDIO (.clip) Thumbnails ──
 // A .clip file is a CSFCHUNK container: an 8-byte signature, the file length
 // and an offset hint (both big-endian u64), then a run of chunks shaped as
@@ -1505,7 +1513,15 @@ async function loadThumb(idx, gen) {
   // a ranged download plus a SQLite parse, so a spinner on every save would be
   // worse than one stale frame.
   const meta = await IDB.get('thumbMeta', path);
-  const staleKey = meta && meta.key && meta.key !== ck ? meta.key : null;
+  let staleKey = meta && meta.key && meta.key !== ck ? meta.key : null;
+  // Thumbnails cached before the key carried a revision were stored under
+  // content_hash alone. Adopt one when it is there, so upgrading does not blank
+  // every grid in the account while it refetches. Costs nothing when the
+  // listing carries content_hash, because then the two keys are the same.
+  if (!meta && !staleKey) {
+    const legacy = path + ':' + (entry.content_hash || '');
+    if (legacy !== ck) staleKey = legacy;
+  }
   let showedStale = false;
   if (staleKey) {
     const old = App.thumbCache[staleKey] || await IDB.get('thumbs', staleKey);
@@ -1518,7 +1534,7 @@ async function loadThumb(idx, gen) {
   }
 
   const isClip = CLIP_EXT.has(ext(entry.name));
-  tqRun(async () => {
+  (isClip ? cqRun : tqRun)(async () => {
     const buf = isClip
       ? await clipThumbBuffer(entry)
       : await (await fetchThumbnail(entry.path_display || path)).arrayBuffer();
