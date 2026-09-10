@@ -649,6 +649,10 @@ const App = {
 };
 
 const THUMB_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','ppm','mp4','webm','ogv','mov','m4v']);
+// Formats Dropbox itself can thumbnail. CLIP_EXT is handled locally instead:
+// the preview is dug out of the file, so it needs a separate code path.
+const CLIP_EXT = new Set(['clip']);
+const canThumb = name => { const e = ext(name); return THUMB_EXT.has(e) || CLIP_EXT.has(e); };
 const IMG_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','svg']);
 const VIDEO_EXT = new Set(['mp4','webm','ogv','mov','m4v','mkv']);
 const AUDIO_EXT = new Set(['mp3','wav','ogg','flac','aac','m4a','opus','weba']);
@@ -691,6 +695,7 @@ function fileCategory(name) {
 }
 function fileIcon(name) {
   const cat = fileCategory(name);
+  if (CLIP_EXT.has(ext(name))) return '🎨';
   if (cat === 'video') return '🎬';
   if (cat === 'audio') return '🎵';
   if (cat === 'text') return '📝';
@@ -715,9 +720,23 @@ function naturalCmp(a, b) {
 // ── IndexedDB ──
 const IDB = {
   db: null,
-  async open() { return new Promise((res, rej) => { const r = indexedDB.open('DropboxFiler', 2); r.onupgradeneeded = e => { const db = e.target.result; ['thumbs','settings','folderPreviews'].forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s); }); }; r.onsuccess = e => { IDB.db = e.target.result; res(); }; r.onerror = () => rej(r.error); }); },
+  // Never rejects: every accessor already degrades to a miss when IDB.db is
+  // null, and losing the thumbnail cache must not stop the app from starting.
+  // A version bump blocks while an older tab still holds the database, so we
+  // resolve and let that tab close in its own time rather than hanging init.
+  async open() { return new Promise(res => {
+    let settled = false;
+    const done = () => { if (!settled) { settled = true; res(); } };
+    let r;
+    try { r = indexedDB.open('DropboxFiler', 3); } catch (_) { return done(); }
+    r.onupgradeneeded = e => { const db = e.target.result; ['thumbs','settings','folderPreviews','thumbMeta'].forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s); }); };
+    r.onsuccess = e => { IDB.db = e.target.result; IDB.db.onversionchange = () => { try { IDB.db.close(); } catch (_) {} IDB.db = null; }; done(); };
+    r.onerror = () => done();
+    r.onblocked = () => { toast('別のタブでこのアプリが開いています。閉じるとサムネイルのキャッシュが有効になります'); done(); };
+  }); },
   async get(s, k) { return new Promise(r => { try { const tx = IDB.db.transaction(s,'readonly'); const q = tx.objectStore(s).get(k); q.onsuccess = () => r(q.result); q.onerror = () => r(); } catch(_) { r(); } }); },
   async put(s, k, v) { return new Promise(r => { try { const tx = IDB.db.transaction(s,'readwrite'); tx.objectStore(s).put(v, k); tx.oncomplete = () => r(); tx.onerror = () => r(); } catch(_) { r(); } }); },
+  async del(s, k) { return new Promise(r => { try { const tx = IDB.db.transaction(s,'readwrite'); tx.objectStore(s).delete(k); tx.oncomplete = () => r(); tx.onerror = () => r(); } catch(_) { r(); } }); },
 };
 
 // ── Dropbox Thumbnail ──
@@ -735,6 +754,332 @@ function entryRelPath(entry) { const a = entry.path_display || entry.path_lower 
 // ── Thumb Queue ──
 const TQ = { running: 0, max: 6, q: [] };
 function tqRun(fn) { return new Promise((res, rej) => { const exec = () => { TQ.running++; fn().then(res, rej).finally(() => { TQ.running--; if (TQ.q.length) TQ.q.shift()(); }); }; TQ.running < TQ.max ? exec() : TQ.q.push(exec); }); }
+
+// ── CLIP STUDIO (.clip) Thumbnails ──
+// A .clip file is a CSFCHUNK container: an 8-byte signature, the file length
+// and an offset hint (both big-endian u64), then a run of chunks shaped as
+// "8-byte name + big-endian u64 length + data". One of them, CHNKSQLi, holds a
+// plain SQLite database, and its CanvasPreview table stores a PNG of the whole
+// canvas. Dropbox cannot thumbnail .clip, so we pull that PNG out ourselves.
+//
+// The format is not documented by CELSYS, so everything here is written to
+// fail soft: every step is validated, and a file we cannot make sense of just
+// falls back to a file icon.
+const CLIP_CHUNK_HDR = 16;
+const CLIP_SQLITE_MAGIC = 'SQLite format 3\0';
+const CLIP_WALK_BUDGET = 192;       // chunk hops before giving up on a walk
+const CLIP_MAX_DB = 64 << 20;       // refuse absurd embedded databases
+const CLIP_MAX_READ = 48 << 20;     // total bytes we will pull for one thumbnail
+const CLIP_MAX_WHOLE = 64 << 20;    // cap when the server ignores Range
+const THUMB_MAX_PX = 512;           // stored thumbnails are downscaled to this
+
+function clipAscii(u8, o, n) { let s = ''; for (let i = 0; i < n; i++) s += String.fromCharCode(u8[o + i]); return s; }
+function clipBE64(u8, o) { let v = 0; for (let i = 0; i < 8; i++) v = v * 256 + u8[o + i]; return v; }
+function clipFind(u8, needle) {
+  const n = needle.length, first = needle.charCodeAt(0), end = u8.length - n;
+  outer: for (let i = 0; i <= end; i++) {
+    if (u8[i] !== first) continue;
+    for (let j = 1; j < n; j++) if (u8[i + j] !== needle.charCodeAt(j)) continue outer;
+    return i;
+  }
+  return -1;
+}
+
+// ── Minimal read-only SQLite reader ──
+// Enough of the file format to walk a table b-tree and read one BLOB column.
+// Avoids shipping a WebAssembly SQLite build, which would be a megabyte of
+// dependency and would break the offline-first service worker story.
+function sqVarint(u8, p) {
+  let v = 0;
+  for (let i = 0; i < 8; i++) {
+    const b = u8[p + i];
+    v = v * 128 + (b & 0x7f);
+    if (!(b & 0x80)) return [v, i + 1];
+  }
+  return [v * 256 + u8[p + 8], 9];
+}
+
+function sqOpen(buf) {
+  const u8 = new Uint8Array(buf);
+  if (clipAscii(u8, 0, 15) !== 'SQLite format 3') throw new Error('not a SQLite database');
+  const dv = new DataView(buf);
+  let pageSize = dv.getUint16(16);
+  if (pageSize === 1) pageSize = 65536;
+  const usable = pageSize - dv.getUint8(20);
+  if (usable < 480) throw new Error('bad page size');
+  return { u8, dv, pageSize, usable, pageCount: dv.getUint32(28) };
+}
+
+const SQ_INT_LEN = [0, 1, 2, 3, 4, 6, 8];
+function sqRecord(rec) {
+  const [hdrLen, n] = sqVarint(rec, 0);
+  const types = [];
+  let p = n;
+  while (p < hdrLen) { const [t, k] = sqVarint(rec, p); p += k; types.push(t); }
+  const vals = [];
+  let d = hdrLen;
+  for (const t of types) {
+    if (t === 0) vals.push(null);
+    else if (t <= 6) {
+      const len = SQ_INT_LEN[t];
+      let v = 0;
+      for (let i = 0; i < len; i++) v = v * 256 + rec[d + i];
+      if (rec[d] & 0x80) v -= Math.pow(2, len * 8);
+      vals.push(v); d += len;
+    } else if (t === 7) { vals.push(new DataView(rec.buffer, rec.byteOffset + d, 8).getFloat64(0)); d += 8; }
+    else if (t === 8) vals.push(0);
+    else if (t === 9) vals.push(1);
+    else if (t >= 12) {
+      const len = (t - 12) >> 1;
+      const slice = rec.subarray(d, d + len);
+      vals.push(t & 1 ? new TextDecoder().decode(slice) : slice.slice());
+      d += len;
+    } else vals.push(null);
+  }
+  return vals;
+}
+
+// Rebuild one table-leaf cell, following the overflow-page chain when the
+// payload does not fit on the page. Preview PNGs always overflow, so this path
+// is the normal one, not the exception.
+function sqCell(db, off) {
+  let p = off;
+  const [payloadLen, a] = sqVarint(db.u8, p); p += a;
+  const [, b] = sqVarint(db.u8, p); p += b; // rowid, unused
+  const U = db.usable, maxLocal = U - 35;
+  let localLen = payloadLen;
+  if (payloadLen > maxLocal) {
+    const minLocal = Math.floor(((U - 12) * 32) / 255) - 23;
+    localLen = minLocal + ((payloadLen - minLocal) % (U - 4));
+    if (localLen > maxLocal) localLen = minLocal;
+  }
+  const rec = new Uint8Array(payloadLen);
+  rec.set(db.u8.subarray(p, p + localLen), 0);
+  let got = localLen;
+  if (got < payloadLen) {
+    let next = db.dv.getUint32(p + localLen);
+    while (next > 0 && next <= db.pageCount && got < payloadLen) {
+      const nb = (next - 1) * db.pageSize;
+      const n = Math.min(U - 4, payloadLen - got);
+      rec.set(db.u8.subarray(nb + 4, nb + 4 + n), got);
+      got += n;
+      next = db.dv.getUint32(nb);
+    }
+  }
+  return sqRecord(rec);
+}
+
+// Depth-first walk of a table b-tree. Bounded and cycle-guarded so a truncated
+// or corrupt database cannot lock the tab up. cb returning false stops early.
+function sqWalk(db, rootPage, cb) {
+  const stack = [rootPage];
+  const seen = new Set();
+  let budget = 8192;
+  while (stack.length && budget-- > 0) {
+    const pg = stack.pop();
+    if (!pg || pg > db.pageCount || seen.has(pg)) continue;
+    seen.add(pg);
+    const base = (pg - 1) * db.pageSize;
+    const hdr = pg === 1 ? 100 : 0;
+    const type = db.u8[base + hdr];
+    const nCells = db.dv.getUint16(base + hdr + 3);
+    if (type === 0x05) {
+      for (let i = 0; i < nCells; i++) stack.push(db.dv.getUint32(base + db.dv.getUint16(base + hdr + 12 + i * 2)));
+      stack.push(db.dv.getUint32(base + hdr + 8));
+    } else if (type === 0x0d) {
+      for (let i = 0; i < nCells; i++) {
+        if (cb(sqCell(db, base + db.dv.getUint16(base + hdr + 8 + i * 2))) === false) return;
+      }
+    }
+  }
+}
+
+function sqRootPage(db, table) {
+  let root = 0;
+  sqWalk(db, 1, r => {
+    if (r[0] === 'table' && String(r[1]).toLowerCase() === table) { root = r[3]; return false; }
+  });
+  return root;
+}
+
+const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+function isPngBytes(v) {
+  if (!(v instanceof Uint8Array) || v.length < 8) return false;
+  for (let i = 0; i < 8; i++) if (v[i] !== PNG_SIG[i]) return false;
+  return true;
+}
+
+// Take the largest PNG in CanvasPreview. Choosing by "these bytes are a PNG"
+// instead of by column name means a future CLIP STUDIO release can reorder or
+// rename the columns without breaking this.
+function clipPreviewFromDb(buf) {
+  const db = sqOpen(buf);
+  const root = sqRootPage(db, 'canvaspreview');
+  if (!root) return null;
+  let best = null;
+  sqWalk(db, root, r => {
+    for (const v of r) if (isPngBytes(v) && (!best || v.length > best.length)) best = v;
+  });
+  return best;
+}
+
+// ── .clip container ──
+// One 16-byte read per hop, so this is nearly free in bandwidth but costs a
+// round trip per chunk. Bounded by budget.
+async function clipWalkChunks(read, size, start, budget) {
+  let off = start;
+  while (off >= 24 && off + CLIP_CHUNK_HDR <= size && budget-- > 0) {
+    const h = await read(off, CLIP_CHUNK_HDR);
+    if (h.length < CLIP_CHUNK_HDR) return 0;
+    const name = clipAscii(h, 0, 8);
+    if (!/^CHNK[0-9A-Za-z]{4}$/.test(name)) return 0;
+    if (name === 'CHNKSQLi') return off + CLIP_CHUNK_HDR;
+    const len = clipBE64(h, 8);
+    if (name === 'CHNKFoot' || len <= 0) return 0;
+    off += CLIP_CHUNK_HDR + len;
+  }
+  return 0;
+}
+
+// Candidate offsets for the embedded database, cheapest first: the header's
+// offset hint, then a short scan of the tail (the database sits just before
+// the footer), then a full walk of the chunk list, and only then the wide tail
+// scans, which are the only steps that can pull megabytes we do not need.
+async function* clipDbCandidates(read, size) {
+  const head = await read(0, 24);
+  if (clipAscii(head, 0, 8) !== 'CSFCHUNK') throw new Error('not a CLIP file');
+
+  const hint = clipBE64(head, 16);
+  if (hint >= 24 && hint + CLIP_CHUNK_HDR <= size) {
+    const at = await clipWalkChunks(read, size, hint, CLIP_WALK_BUDGET);
+    if (at) yield at;
+  }
+
+  // Lowest byte already scanned, so a wider window only reads what is new.
+  let scanned = size;
+  const scanTail = async win => {
+    const start = Math.max(24, size - win);
+    if (start >= scanned) return 0;
+    const len = Math.min(scanned - start + CLIP_SQLITE_MAGIC.length, size - start);
+    const buf = await read(start, len);
+    scanned = start;
+    const at = clipFind(buf, CLIP_SQLITE_MAGIC);
+    return at >= 0 ? start + at : 0;
+  };
+
+  let at = await scanTail(2 << 20);
+  if (at) yield at;
+
+  at = await clipWalkChunks(read, size, 24, CLIP_WALK_BUDGET);
+  if (at) yield at;
+
+  for (const win of [8 << 20, 32 << 20]) {
+    at = await scanTail(win);
+    if (at) yield at;
+    if (size - win <= 24) break;
+  }
+}
+
+// The database length comes out of its own header: page size at byte 16, page
+// count at byte 28. That excludes the trailing CHNKFoot without needing to
+// know where it starts.
+async function clipReadDb(read, size, off) {
+  const hdr = await read(off, 100);
+  if (hdr.length < 100 || clipAscii(hdr, 0, 15) !== 'SQLite format 3') return null;
+  let pageSize = (hdr[16] << 8) | hdr[17];
+  if (pageSize === 1) pageSize = 65536;
+  const pageCount = ((hdr[28] << 24) | (hdr[29] << 16) | (hdr[30] << 8) | hdr[31]) >>> 0;
+  let len = pageSize * pageCount;
+  if (!len || len > size - off) len = size - off;
+  if (len > CLIP_MAX_DB) return null;
+  const u8 = await read(off, len);
+  return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.length);
+}
+
+// ── Ranged Dropbox reads ──
+// /files/download honours the Range header and answers 206. If a proxy strips
+// it and sends the whole file, we keep the body only when it is small enough
+// to be worth the bytes, and serve every later read out of it.
+function clipReader(path, size) {
+  let whole = null, spent = 0;
+  const slice = (u8, start, len) => u8.subarray(start, Math.min(start + len, u8.length));
+  return async (start, len) => {
+    if (whole) return slice(whole, start, len);
+    if (start >= size) return new Uint8Array(0);
+    len = Math.min(len, size - start);
+    spent += len;
+    if (spent > CLIP_MAX_READ) throw new Error('clip read budget exceeded');
+    const r = await fetch('https://content.dropboxapi.com/2/files/download', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + App.storage.getToken(),
+        'Dropbox-API-Arg': dbxArg({ path }),
+        'Range': 'bytes=' + start + '-' + (start + len - 1),
+      },
+    });
+    if (r.status === 206) return new Uint8Array(await r.arrayBuffer());
+    if (r.status === 200) {
+      if (size > CLIP_MAX_WHOLE) { try { r.body.cancel(); } catch (_) {} throw new Error('range unsupported'); }
+      whole = new Uint8Array(await r.arrayBuffer());
+      return slice(whole, start, len);
+    }
+    throw new Error('download ' + r.status);
+  };
+}
+
+// Serve sub-ranges of the last block read from memory, so reading the SQLite
+// header and then the database itself costs one request rather than two.
+function clipSlabReader(read) {
+  let slab = null;
+  return async (start, len) => {
+    if (slab && start >= slab.start && start + len <= slab.start + slab.u8.length) {
+      const o = start - slab.start;
+      return slab.u8.subarray(o, o + len);
+    }
+    const u8 = await read(start, len);
+    if (u8.length >= 4096) slab = { start, u8 };
+    return u8;
+  };
+}
+
+// Canvas previews are full-canvas PNGs and can be a megabyte. Store a
+// downscaled JPEG instead: the grid never shows more than a few hundred
+// pixels, and .clip files are re-saved often enough that size matters.
+async function shrinkToJpeg(blob, max) {
+  const bmp = await createImageBitmap(blob);
+  const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
+  let cv;
+  if (typeof OffscreenCanvas !== 'undefined') cv = new OffscreenCanvas(w, h);
+  else { cv = document.createElement('canvas'); cv.width = w; cv.height = h; }
+  const cx = cv.getContext('2d');
+  cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h);   // previews carry alpha; JPEG does not
+  cx.drawImage(bmp, 0, 0, w, h);
+  if (bmp.close) bmp.close();
+  const out = cv.convertToBlob
+    ? await cv.convertToBlob({ type: 'image/jpeg', quality: 0.82 })
+    : await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.82));
+  return out.arrayBuffer();
+}
+
+async function clipThumbBuffer(entry) {
+  const size = entry.size;
+  if (!size) throw new Error('unknown file size');
+  const read = clipSlabReader(clipReader(entry.path_display || entry.path_lower, size));
+  const tried = new Set();
+  for await (const off of clipDbCandidates(read, size)) {
+    if (tried.has(off)) continue;
+    tried.add(off);
+    try {
+      const db = await clipReadDb(read, size, off);
+      if (!db) continue;
+      const png = clipPreviewFromDb(db);
+      if (png) return await shrinkToJpeg(new Blob([png], { type: 'image/png' }), THUMB_MAX_PX);
+    } catch (_) { /* try the next candidate */ }
+  }
+  throw new Error('no canvas preview');
+}
+
 
 // ── Settings Sync (Dropbox + IDB) ──
 const SETTINGS_PATH = 'DropboxFiler-settings.json';
@@ -1093,7 +1438,7 @@ function renderGrid(gen) {
     const draggable = ' draggable="true"';
     return `<div class="grid-item${sel ? ' selected' : ''}" data-index="${idx}" data-tag="${entry['.tag']}"${draggable}>
       <div class="grid-check" data-check="${idx}">${sel ? '✓' : ''}</div>
-      <div class="grid-thumb" id="thumb-${idx}">${isF ? '<span class="folder-icon">📁</span>' : (THUMB_EXT.has(e) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">' + fileIcon(entry.name) + '</span>')}</div>
+      <div class="grid-thumb" id="thumb-${idx}">${isF ? '<span class="folder-icon">📁</span>' : (canThumb(entry.name) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">' + fileIcon(entry.name) + '</span>')}</div>
       <div class="grid-name" title="${entry.name}">${entry.name}</div></div>`;
   }).join('');
   setupObserver(gen); loadFolderPreviews(gen);
@@ -1137,15 +1482,63 @@ let observer = null;
 function setupObserver(gen) {
   if (observer) observer.disconnect();
   observer = new IntersectionObserver(ios => { for (const io of ios) { if (io.isIntersecting) { loadThumb(parseInt(io.target.dataset.index), gen); observer.unobserve(io.target); } } }, { root: $('#main'), rootMargin: '300px' });
-  document.querySelectorAll('.grid-item[data-tag="file"]').forEach(el => { const i = parseInt(el.dataset.index); if (App.entries[i] && THUMB_EXT.has(ext(App.entries[i].name))) observer.observe(el); });
+  document.querySelectorAll('.grid-item[data-tag="file"]').forEach(el => { const i = parseInt(el.dataset.index); if (App.entries[i] && canThumb(App.entries[i].name)) observer.observe(el); });
 }
+function thumbUrl(buf) { return URL.createObjectURL(new Blob([buf], { type: 'image/jpeg' })); }
+
+// Revision marker for the cache key. content_hash is what Dropbox gives us,
+// but fall back to rev/server_modified so a listing that omits it still
+// invalidates on save instead of pinning a stale thumbnail forever.
+function thumbRev(entry) { return entry.content_hash || entry.rev || entry.server_modified || ''; }
+
 async function loadThumb(idx, gen) {
   const entry = App.entries[idx]; if (!entry) return;
-  const ck = entry.path_lower + ':' + (entry.content_hash || '');
+  const path = entry.path_lower;
+  const ck = path + ':' + thumbRev(entry);
   if (App.thumbCache[ck]) { setThumbImg(idx, gen, App.thumbCache[ck]); return; }
   const cached = await IDB.get('thumbs', ck);
-  if (cached) { const u = URL.createObjectURL(new Blob([cached], { type: 'image/jpeg' })); App.thumbCache[ck] = u; setThumbImg(idx, gen, u); return; }
-  tqRun(async () => { const blob = await fetchThumbnail(entry.path_display || entry.path_lower); const buf = await blob.arrayBuffer(); const u = URL.createObjectURL(new Blob([buf], { type: 'image/jpeg' })); App.thumbCache[ck] = u; IDB.put('thumbs', ck, buf); setThumbImg(idx, gen, u); }).catch(() => { if (gen === App.navGen) { const el = document.getElementById('thumb-' + idx); if (el) el.innerHTML = '<span class="file-icon">🖼</span>'; } });
+  if (cached) { const u = thumbUrl(cached); App.thumbCache[ck] = u; setThumbImg(idx, gen, u); return; }
+
+  // Nothing cached for this revision. If a thumbnail of an older revision of
+  // the same file is still around, show it immediately and refresh underneath.
+  // .clip files are re-saved constantly while drawing, and rebuilding one costs
+  // a ranged download plus a SQLite parse, so a spinner on every save would be
+  // worse than one stale frame.
+  const meta = await IDB.get('thumbMeta', path);
+  const staleKey = meta && meta.key && meta.key !== ck ? meta.key : null;
+  let showedStale = false;
+  if (staleKey) {
+    const old = App.thumbCache[staleKey] || await IDB.get('thumbs', staleKey);
+    if (old) {
+      const u = typeof old === 'string' ? old : thumbUrl(old);
+      App.thumbCache[staleKey] = u;
+      setThumbImg(idx, gen, u);
+      showedStale = true;
+    }
+  }
+
+  const isClip = CLIP_EXT.has(ext(entry.name));
+  tqRun(async () => {
+    const buf = isClip
+      ? await clipThumbBuffer(entry)
+      : await (await fetchThumbnail(entry.path_display || path)).arrayBuffer();
+    const u = thumbUrl(buf);
+    App.thumbCache[ck] = u;
+    setThumbImg(idx, gen, u);
+    IDB.put('thumbs', ck, buf);
+    IDB.put('thumbMeta', path, { key: ck, ts: Date.now() });
+    // Drop the superseded revision, otherwise a file saved fifty times a day
+    // leaves fifty thumbnails behind in IndexedDB.
+    if (staleKey) {
+      IDB.del('thumbs', staleKey);
+      const su = App.thumbCache[staleKey];
+      if (su && su !== u) { URL.revokeObjectURL(su); delete App.thumbCache[staleKey]; }
+    }
+  }).catch(() => {
+    if (showedStale || gen !== App.navGen) return;
+    const el = document.getElementById('thumb-' + idx);
+    if (el) el.innerHTML = '<span class="file-icon">' + (isClip ? '🎨' : '🖼') + '</span>';
+  });
 }
 function setThumbImg(idx, gen, u) { if (gen !== App.navGen) return; const el = document.getElementById('thumb-' + idx); if (el) el.innerHTML = `<img src="${u}" alt="" draggable="false">`; }
 
