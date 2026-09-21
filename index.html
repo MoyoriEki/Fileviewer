@@ -3149,7 +3149,9 @@ async function prefetchV(cur) { for (const off of [1,-1,2,-2,3,-3]) { const i = 
 function vPrev() { if (App.viewerIndex > 0) loadViewerPage(App.viewerIndex - 1); }
 function vNext() { if (App.viewerIndex < App.viewerImages.length - 1) loadViewerPage(App.viewerIndex + 1); }
 function updateVSlider() { const s = $('#viewer-slider'); s.max = App.viewerImages.length-1; s.value = App.viewerIndex; $('#viewer-page-label').textContent = `${App.viewerIndex+1} / ${App.viewerImages.length}`; }
-function showViewerBar() { const isImg = App.viewerImages[App.viewerIndex] && fileCategory(App.viewerImages[App.viewerIndex].name) === 'image'; $('#viewer-topbar').classList.add('visible'); if (isImg) $('#viewer-bottombar').classList.add('visible'); else $('#viewer-bottombar').classList.remove('visible'); clearTimeout(App.toolbarTimer); App.toolbarTimer = setTimeout(() => { if (App.viewerVisible) { $('#viewer-topbar').classList.remove('visible'); $('#viewer-bottombar').classList.remove('visible'); } }, 3000); }
+function viewerBarVisible() { return $('#viewer-topbar').classList.contains('visible'); }
+function hideViewerBar() { clearTimeout(App.toolbarTimer); $('#viewer-topbar').classList.remove('visible'); $('#viewer-bottombar').classList.remove('visible'); }
+function showViewerBar() { const isImg = App.viewerImages[App.viewerIndex] && fileCategory(App.viewerImages[App.viewerIndex].name) === 'image'; $('#viewer-topbar').classList.add('visible'); if (isImg) $('#viewer-bottombar').classList.add('visible'); else $('#viewer-bottombar').classList.remove('visible'); clearTimeout(App.toolbarTimer); App.toolbarTimer = setTimeout(() => { if (App.viewerVisible) hideViewerBar(); }, 3000); }
 
 // ════════════════════════════════════════
 // Events
@@ -3553,7 +3555,12 @@ function setupEvents() {
     loadFolder(App.currentPath); loadTree();
   });
 
-  $('#tap-left').onclick = vPrev; $('#tap-right').onclick = vNext; $('#tap-center').onclick = showViewerBar;
+  $('#tap-left').onclick = vPrev; $('#tap-right').onclick = vNext;
+  // Center tap toggles the bars, so they can be dismissed without waiting out
+  // the auto-hide timer. Remember where the dismissing tap landed: the pointer
+  // sits there afterwards, and a stray move would otherwise bring them back.
+  let barHidePt = null;
+  $('#tap-center').onclick = e => { if (viewerBarVisible()) { hideViewerBar(); barHidePt = { x: e.clientX, y: e.clientY }; } else { barHidePt = null; showViewerBar(); } };
   $('#viewer-slider').oninput = e => loadViewerPage(parseInt(e.target.value));
 
   // Keyboard
@@ -3580,7 +3587,7 @@ function setupEvents() {
   imgWrap.addEventListener('touchend', e => { if (!swiping) return; swiping = false; const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 50) dx > 0 ? vPrev() : vNext(); });
   imgWrap.addEventListener('touchcancel', () => { swiping = false; });
   imgWrap.addEventListener('contextmenu', e => e.preventDefault());
-  $('#viewer').addEventListener('mousemove', () => { if (App.viewerVisible) showViewerBar(); });
+  $('#viewer').addEventListener('pointermove', e => { if (!App.viewerVisible || e.pointerType !== 'mouse') return; if (barHidePt && Math.hypot(e.clientX - barHidePt.x, e.clientY - barHidePt.y) < 16) return; barHidePt = null; showViewerBar(); });
   let wCD = false;
   $('#viewer').addEventListener('wheel', e => { if (!App.viewerVisible||wCD) return; e.preventDefault(); wCD=true; setTimeout(()=>wCD=false,200); e.deltaY>0 ? vNext() : vPrev(); }, { passive: false });
 
