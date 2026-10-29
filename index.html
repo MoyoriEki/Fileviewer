@@ -272,6 +272,14 @@ body {
 
 .grid-name { margin-top: 3px; font-size: 11px; text-align: center; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); padding: 0 2px; }
 .grid-item:hover .grid-name, .grid-item.selected .grid-name { color: var(--text); }
+/* Group badge: pastel chip in the top-right (the checkbox owns top-left). Text
+   stays dark in both themes because the chip itself is always pastel. */
+.grid-group {
+  position: absolute; top: 6px; right: 6px; z-index: 3; max-width: calc(100% - 40px);
+  padding: 1px 6px; border-radius: 4px; background: var(--gc); color: #2a2a2a;
+  border: 1px solid rgba(0,0,0,0.18); font-size: 10.5px; line-height: 16px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
+}
 
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px; gap: 8px; color: var(--text-muted); font-size: 13px; }
 .empty-state .empty-icon { font-size: 36px; opacity: 0.4; }
@@ -290,6 +298,26 @@ body {
 .ctx-item.danger:hover { background: var(--danger-dim); }
 .ctx-item .ctx-icon { width: 16px; text-align: center; font-size: 13px; }
 .ctx-sep { height: 1px; background: var(--border); margin: 4px 8px; }
+.ctx-swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.25); display: inline-block; }
+
+/* ── Group manager ─────────────────────────────────────── */
+#group-list { display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow-y: auto; margin-bottom: 12px; }
+#group-list .empty { color: var(--text-muted); font-size: 12px; padding: 8px 0; }
+.group-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: var(--radius); background: var(--bg); font-size: 12.5px; }
+.group-row.editing { outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
+.group-row .g-no { width: 20px; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.group-row .g-swatch { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.25); flex-shrink: 0; }
+.group-row .g-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-row .g-count { color: var(--text-muted); font-size: 11px; }
+.group-row button { width: 24px; height: 24px; border: none; border-radius: 4px; background: var(--bg-hover); color: var(--text); cursor: pointer; font-size: 12px; }
+.group-row button:hover { background: var(--bg-selected); }
+.group-row button:disabled { opacity: 0.3; cursor: default; }
+.group-form { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border); padding-top: 12px; }
+.group-palette { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.group-palette .sw { width: 24px; height: 24px; border-radius: 5px; border: 1px solid rgba(0,0,0,0.25); cursor: pointer; padding: 0; }
+.group-palette .sw.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+.group-palette input[type=color] { width: 28px; height: 26px; border: none; padding: 0; background: none; cursor: pointer; }
+.group-form-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
 /* ── Image Viewer ──────────────────────────────────────── */
 #viewer { display: none; position: fixed; inset: 0; z-index: 100; background: #000; flex-direction: column; }
@@ -500,8 +528,10 @@ body {
       <option value="date_asc">更新日 ↑</option>
       <option value="size_desc">サイズ ↓</option>
       <option value="size_asc">サイズ ↑</option>
+      <option value="group">グループ順</option>
     </select>
     <button class="tb-btn" id="btn-save-preset" title="現在の並びを新規プリセットとして登録" style="width:26px;height:26px;font-size:13px">📌</button>
+    <button class="tb-btn" id="btn-groups" title="このフォルダのグループ管理" style="width:26px;height:26px;font-size:13px">🏷</button>
     <div class="tb-spacer"></div>
     <input type="range" id="thumb-slider" min="80" max="320" value="160" title="サムネサイズ">
     <div class="tb-spacer"></div>
@@ -613,6 +643,20 @@ body {
 </div></div>
 
 
+<div class="modal-overlay" id="modal-groups"><div class="modal-box">
+  <h3>グループ（このフォルダ）</h3>
+  <div id="group-list"></div>
+  <div class="group-form">
+    <input class="modal-input" id="group-name" type="text" placeholder="グループ名" autocomplete="off">
+    <div class="group-palette" id="group-palette"></div>
+    <div class="group-form-actions">
+      <button class="modal-btn cancel" id="group-form-cancel" style="display:none">編集をやめる</button>
+      <button class="modal-btn primary" id="group-form-ok">追加</button>
+    </div>
+  </div>
+  <div class="modal-actions"><button class="modal-btn cancel" id="groups-close">閉じる</button></div>
+</div></div>
+
 <div class="modal-overlay" id="modal-settings"><div class="modal-box">
   <h3>設定</h3>
   <div class="settings-row"><span class="settings-label">テーマ</span><button class="settings-btn" id="set-theme">◑ ダーク</button></div>
@@ -643,7 +687,8 @@ const App = {
   selected: new Set(),
   customOrders: {},    // { path: [names] } — current working (unsaved) custom order per folder
   customPresets: {},   // { path: [{id, name, order:[names]}] } — named saved custom-order presets
-  folderSortModes: {}, // { path: mode } — per-folder sort mode ('custom' | 'preset:<id>' | standard mode)
+  folderSortModes: {}, // { path: mode } — per-folder sort mode ('custom' | 'preset:<id>' | 'group' | standard mode)
+  folderGroups: {},    // { path: { groups:[{id,name,color}], files:{ name: groupId } } } — array order = group number
   foldersUpdatedAt: {},// { path: ts } — last-edit timestamp per folder for cross-device merge (tombstone-aware)
   undoStack: [],  // [{type, label, ops:[{from,to}]}]
 };
@@ -1109,6 +1154,7 @@ function mergeSettings(local, cloud) {
     ...Object.keys(local.customOrders || {}), ...Object.keys(cloud.customOrders || {}),
     ...Object.keys(local.customPresets || {}), ...Object.keys(cloud.customPresets || {}),
     ...Object.keys(local.folderSortModes || {}), ...Object.keys(cloud.folderSortModes || {}),
+    ...Object.keys(local.folderGroups || {}), ...Object.keys(cloud.folderGroups || {}),
     ...Object.keys(lTs), ...Object.keys(cTs),
   ]);
   // Pick the authoritative side per folder, then copy that side's value for each map.
@@ -1122,7 +1168,7 @@ function mergeSettings(local, cloud) {
     }
     return [false, undefined];
   };
-  const customOrders = {}, customPresets = {}, folderSortModes = {}, foldersUpdatedAt = {};
+  const customOrders = {}, customPresets = {}, folderSortModes = {}, folderGroups = {}, foldersUpdatedAt = {};
   for (const p of allPaths) {
     const lt = lTs[p] || 0, ct = cTs[p] || 0;
     const side = lt > ct ? 'local' : (ct > lt ? 'cloud' : 'tie');
@@ -1130,6 +1176,7 @@ function mergeSettings(local, cloud) {
     if ((r = pick(local.customOrders, cloud.customOrders, p, side))[0]) customOrders[p] = r[1];
     if ((r = pick(local.customPresets, cloud.customPresets, p, side))[0]) customPresets[p] = r[1];
     if ((r = pick(local.folderSortModes, cloud.folderSortModes, p, side))[0]) folderSortModes[p] = r[1];
+    if ((r = pick(local.folderGroups, cloud.folderGroups, p, side))[0]) folderGroups[p] = r[1];
     if (lt || ct) foldersUpdatedAt[p] = Math.max(lt, ct);
   }
 
@@ -1139,7 +1186,7 @@ function mergeSettings(local, cloud) {
     favoritesUpdatedAt: Math.max(lFavTs, cFavTs),
     lastPath: cloud.lastPath ?? local.lastPath ?? '',
     sidebarHidden: cloud.sidebarHidden ?? local.sidebarHidden ?? false,
-    customOrders, customPresets, folderSortModes, foldersUpdatedAt,
+    customOrders, customPresets, folderSortModes, folderGroups, foldersUpdatedAt,
   };
 }
 
@@ -1159,6 +1206,7 @@ async function loadSettings() {
     customOrders: await IDB.get('settings','customOrders'),
     customPresets: await IDB.get('settings','customPresets'),
     folderSortModes: await IDB.get('settings','folderSortModes'),
+    folderGroups: await IDB.get('settings','folderGroups'),
     foldersUpdatedAt: await IDB.get('settings','foldersUpdatedAt') || {},
   };
 
@@ -1182,6 +1230,7 @@ async function loadSettings() {
   IDB.put('settings','customOrders', merged.customOrders);
   IDB.put('settings','customPresets', merged.customPresets);
   IDB.put('settings','folderSortModes', merged.folderSortModes);
+  IDB.put('settings','folderGroups', merged.folderGroups);
   IDB.put('settings','foldersUpdatedAt', merged.foldersUpdatedAt);
 
   return merged;
@@ -1208,6 +1257,7 @@ async function saveSettingsNow(data) {
         customOrders: App.customOrders || {},
         customPresets: App.customPresets || {},
         folderSortModes: App.folderSortModes || {},
+        folderGroups: App.folderGroups || {},
         foldersUpdatedAt: App.foldersUpdatedAt || {},
       };
       d = cloud ? mergeSettings(localState, cloud) : localState;
@@ -1223,12 +1273,14 @@ async function saveSettingsNow(data) {
       App.customOrders = d.customOrders;
       App.customPresets = d.customPresets;
       App.folderSortModes = d.folderSortModes;
+      App.folderGroups = d.folderGroups;
       App.foldersUpdatedAt = d.foldersUpdatedAt;
       IDB.put('settings','favorites', d.favorites);
       IDB.put('settings','favoritesUpdatedAt', d.favoritesUpdatedAt || 0);
       IDB.put('settings','customOrders', d.customOrders);
       IDB.put('settings','customPresets', d.customPresets);
       IDB.put('settings','folderSortModes', d.folderSortModes);
+      IDB.put('settings','folderGroups', d.folderGroups);
       IDB.put('settings','foldersUpdatedAt', d.foldersUpdatedAt);
     }
     await App.storage.save(SETTINGS_PATH, JSON.stringify(d, null, 2));
@@ -1252,13 +1304,13 @@ function saveSetting(key, value) {
     IDB.put('settings', 'favoritesUpdatedAt', App.favoritesUpdatedAt);
   }
   // Stamp the edited folder so cross-device merges can do per-folder last-write-wins.
-  if (key === 'customOrders' || key === 'customPresets' || key === 'folderSortModes') {
+  if (key === 'customOrders' || key === 'customPresets' || key === 'folderSortModes' || key === 'folderGroups') {
     if (!App.foldersUpdatedAt) App.foldersUpdatedAt = {};
     App.foldersUpdatedAt[customOrderKey()] = Date.now();
     IDB.put('settings', 'foldersUpdatedAt', App.foldersUpdatedAt);
   }
-  // Favorites, customOrders, customPresets, folderSortModes save immediately; others debounced
-  if (key === 'favorites' || key === 'customOrders' || key === 'customPresets' || key === 'folderSortModes') saveSettingsImmediate();
+  // Favorites, customOrders, customPresets, folderSortModes, folderGroups save immediately; others debounced
+  if (key === 'favorites' || key === 'customOrders' || key === 'customPresets' || key === 'folderSortModes' || key === 'folderGroups') saveSettingsImmediate();
   else saveSettings();
 }
 
@@ -1272,6 +1324,7 @@ function applyLoadedSettings(s) {
   App.customOrders = s.customOrders || {};
   App.customPresets = s.customPresets || {};
   App.folderSortModes = s.folderSortModes || {};
+  App.folderGroups = s.folderGroups || {};
   App.foldersUpdatedAt = s.foldersUpdatedAt || {};
 }
 
@@ -1349,6 +1402,7 @@ async function init() {
   App.customPresets = localPresets || {};
   const localModes = await IDB.get('settings','folderSortModes');
   App.folderSortModes = localModes || {};
+  App.folderGroups = await IDB.get('settings','folderGroups') || {};
   App.foldersUpdatedAt = await IDB.get('settings','foldersUpdatedAt') || {};
   // Backward compat: any saved custom order with no mode → assume 'custom'
   for (const k of Object.keys(App.customOrders)) {
@@ -1418,6 +1472,13 @@ async function loadFolder(path) {
 function sortEntries(entries) {
   const folders = entries.filter(e => e['.tag'] === 'folder');
   const files = entries.filter(e => e['.tag'] === 'file');
+  // 'group' is a per-folder mode (like custom), so it never lands in App.sortMode.
+  if (getEffectiveSortMode() === 'group') {
+    const rank = e => { const g = groupOf(e); return g ? g.no : Infinity; };
+    files.sort((a, b) => (rank(a) - rank(b)) || naturalCmp(a.name, b.name));
+    folders.sort((a, b) => naturalCmp(a.name, b.name));
+    return [...folders, ...files];
+  }
   const cmp = (a, b) => { switch (App.sortMode) {
     case 'name_asc': return naturalCmp(a.name, b.name);
     case 'name_desc': return naturalCmp(b.name, a.name);
@@ -1444,9 +1505,11 @@ function renderGrid(gen) {
   grid.innerHTML = entries.map((entry, idx) => {
     const isF = entry['.tag'] === 'folder', e = ext(entry.name), sel = App.selected.has(idx);
     const draggable = ' draggable="true"';
+    const g = groupOf(entry);
     return `<div class="grid-item${sel ? ' selected' : ''}" data-index="${idx}" data-tag="${entry['.tag']}"${draggable}>
       <div class="grid-check" data-check="${idx}">${sel ? '✓' : ''}</div>
-      <div class="grid-thumb" id="thumb-${idx}">${isF ? '<span class="folder-icon">📁</span>' : (canThumb(entry.name) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">' + fileIcon(entry.name) + '</span>')}</div>
+      ${g ? `<div class="grid-group" style="--gc:${g.color}" title="${g.no}. ${escHtml(g.name)}">${escHtml(g.name)}</div>` : ''}
+      <div class="grid-thumb" id="thumb-${idx}"${g ? ` style="background:${g.color}"` : ''}>${isF ? '<span class="folder-icon">📁</span>' : (canThumb(entry.name) ? '<div class="loading-spinner"></div>' : '<span class="file-icon">' + fileIcon(entry.name) + '</span>')}</div>
       <div class="grid-name" title="${entry.name}">${entry.name}</div></div>`;
   }).join('');
   setupObserver(gen); loadFolderPreviews(gen);
@@ -1614,6 +1677,7 @@ function showCtx(x, y, entry, multi) {
   if (multi) {
     const count = App.selected.size;
     h += `<div class="ctx-item" style="color:var(--text-muted);pointer-events:none;font-size:11.5px">${count}件選択中</div><div class="ctx-sep"></div>`;
+    if (selectedFileEntries().length) h += '<div class="ctx-item" data-action="group-menu"><span class="ctx-icon">🏷</span>グループ ▸</div>';
     h += '<div class="ctx-item" data-action="batch-rename"><span class="ctx-icon">🔢</span>連番リネーム</div>';
     h += '<div class="ctx-item" data-action="move-multi"><span class="ctx-icon">📦</span>移動</div>';
     h += '<div class="ctx-item" data-action="yank-multi"><span class="ctx-icon">📋</span>コピー</div>';
@@ -1626,6 +1690,7 @@ function showCtx(x, y, entry, multi) {
     else if (AUDIO_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">🎵</span>音声を開く</div><div class="ctx-sep"></div>'; }
     else if (TEXT_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">📝</span>テキストを開く</div><div class="ctx-sep"></div>'; }
     else if (PDF_EXT.has(e)) { h += '<div class="ctx-item" data-action="view"><span class="ctx-icon">📕</span>PDFを開く</div><div class="ctx-sep"></div>'; }
+    if (!isF) h += '<div class="ctx-item" data-action="group-menu"><span class="ctx-icon">🏷</span>グループ ▸</div>';
     h += '<div class="ctx-item" data-action="rename"><span class="ctx-icon">✏</span>名前の変更</div>';
     h += '<div class="ctx-item" data-action="move"><span class="ctx-icon">📦</span>移動</div>';
     if (!isF && IMG_EXT.has(e)) {
@@ -1652,6 +1717,7 @@ function folderActionsHtml() {
   eh += '<div class="ctx-item" data-action="new-image"><span class="ctx-icon">🎨</span>新規画像作成</div>';
   eh += '<div class="ctx-sep"></div>';
   eh += '<div class="ctx-item" data-action="save-preset"><span class="ctx-icon">📌</span>現在の並びを新規プリセット登録</div>';
+  eh += '<div class="ctx-item" data-action="groups"><span class="ctx-icon">🏷</span>グループ管理</div>';
   const activePreset = getActivePreset();
   if (activePreset) {
     eh += `<div class="ctx-item" data-action="rename-preset"><span class="ctx-icon">✏</span>プリセット名を変更（${escHtml(activePreset.name)}）</div>`;
@@ -1662,7 +1728,9 @@ function folderActionsHtml() {
   }
   return eh;
 }
+let ctxPos = { x: 0, y: 0 };
 function positionCtx(m, x, y) {
+  ctxPos = { x, y };
   m.style.left = '-9999px'; m.style.top = '-9999px';
   m.classList.add('show');
   const w = m.offsetWidth || 200, h = m.offsetHeight || 200;
@@ -1694,8 +1762,15 @@ function showCtxTree(x, y, path) {
 function hideCtx() { $('#ctx-menu').classList.remove('show'); ctxTarget = null; ctxIsMulti = false; }
 
 async function doCtx(action) {
-  const entry = ctxTarget; hideCtx();
-  if (action === 'open') navigate(entryRelPath(entry));
+  const entry = ctxTarget, multi = ctxIsMulti; hideCtx();
+  // Deferred: this runs inside the menu's click, and swapping the menu's DOM now
+  // would detach the click target so the document handler closes the new menu.
+  if (action === 'group-menu') { const t = multi ? selectedFileEntries() : [entry]; setTimeout(() => showCtxGroups(t), 0); }
+  else if (action.startsWith('group-set:')) assignGroup(groupTargets, action.slice(10));
+  else if (action === 'group-clear') assignGroup(groupTargets, null);
+  else if (action === 'group-new') openGroupManager(groupTargets);
+  else if (action === 'groups') openGroupManager();
+  else if (action === 'open') navigate(entryRelPath(entry));
   else if (action === 'view') openViewer(entry);
   else if (action === 'fav') addFavorite(entryRelPath(entry));
   else if (action === 'rename') showRenameModal(entry);
@@ -2960,6 +3035,7 @@ function populateSortSelect() {
   html += '<option value="date_asc">更新日 ↑</option>';
   html += '<option value="size_desc">サイズ ↓</option>';
   html += '<option value="size_asc">サイズ ↑</option>';
+  html += '<option value="group">グループ順</option>';
   if (presets.length || hasDraft) {
     html += '<optgroup label="カスタム順">';
     for (const p of presets) {
@@ -3067,6 +3143,155 @@ function deleteActivePreset() {
   // Fall back to unsaved custom order (preserves current display)
   setFolderSortMode('custom');
   toast(`プリセット「${preset.name}」を削除しました`);
+}
+
+// ── Groups (per folder) ──
+// Stored per folder next to the custom orders: { groups:[{id,name,color}],
+// files:{ name: groupId } }. The group number is the 1-based array position, so
+// renumbering is just a swap and deleting never leaves a gap. Files are keyed by
+// name, so a rename/move outside the folder drops the assignment (same as custom
+// orders today).
+const GROUP_PALETTE = ['#FFD6E0','#FFE4C4','#FFF3B0','#E2F0CB','#C7F0DB','#C4F1F9','#CDE7FF','#D7D9FF','#E8D5FF','#F8D5F0','#E6DCCF','#E0E0E0'];
+// Colors come from the synced settings file and end up in style attributes.
+const safeColor = c => /^#[0-9a-f]{6}$/i.test(c || '') ? c : '#E0E0E0';
+function folderGroupData(create) {
+  const k = customOrderKey();
+  let d = App.folderGroups?.[k];
+  if (!d && create) {
+    if (!App.folderGroups) App.folderGroups = {};
+    d = App.folderGroups[k] = { groups: [], files: {} };
+  }
+  return d || null;
+}
+function getGroups() { return folderGroupData()?.groups || []; }
+function groupOf(entry) {
+  if (!entry || entry['.tag'] !== 'file') return null;
+  const d = folderGroupData(); if (!d) return null;
+  const id = d.files?.[entry.name]; if (!id) return null;
+  const i = d.groups.findIndex(g => g.id === id);
+  return i < 0 ? null : { id, name: d.groups[i].name, color: safeColor(d.groups[i].color), no: i + 1 };
+}
+function genGroupId() { return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function saveGroups() {
+  const k = customOrderKey(), d = App.folderGroups?.[k];
+  // Drop an emptied folder entirely; the merge treats its absence as a deletion.
+  if (d && !d.groups.length && !Object.keys(d.files).length) delete App.folderGroups[k];
+  saveSetting('folderGroups', App.folderGroups);
+}
+// Repaint after a group change, re-sorting when the folder is in group order and
+// keeping the same files selected across the re-sort.
+function refreshGroupView() {
+  const sel = selectedEntries();
+  if (getEffectiveSortMode() === 'group') App.entries = sortEntries(App.entries);
+  App.selected.clear();
+  for (const e of sel) { const i = App.entries.indexOf(e); if (i >= 0) App.selected.add(i); }
+  updateSelBadge();
+  renderGrid(App.navGen);
+}
+function assignGroup(entries, id) {
+  const files = entries.filter(e => e && e['.tag'] === 'file');
+  if (!files.length) return;
+  const d = folderGroupData(true);
+  for (const e of files) { if (id) d.files[e.name] = id; else delete d.files[e.name]; }
+  saveGroups(); refreshGroupView();
+  const g = id && getGroups().find(x => x.id === id);
+  toast(g ? `${files.length}件を「${g.name}」に振り分けました` : `${files.length}件のグループを解除しました`);
+}
+
+// Second-level context menu: pick a group for the right-clicked file(s).
+let groupTargets = [];
+function showCtxGroups(targets) {
+  groupTargets = targets.filter(e => e && e['.tag'] === 'file');
+  if (!groupTargets.length) return;
+  const m = $('#ctx-menu'), groups = getGroups();
+  const cur = new Set(groupTargets.map(e => groupOf(e)?.id || ''));
+  const only = cur.size === 1 ? [...cur][0] : null;
+  let h = `<div class="ctx-item" style="color:var(--text-muted);pointer-events:none;font-size:11.5px">グループに振り分け（${groupTargets.length}件）</div><div class="ctx-sep"></div>`;
+  groups.forEach((g, i) => {
+    h += `<div class="ctx-item" data-action="group-set:${escHtml(g.id)}"><span class="ctx-icon"><span class="ctx-swatch" style="background:${safeColor(g.color)}"></span></span>${i + 1}. ${escHtml(g.name)}${only === g.id ? ' ✓' : ''}</div>`;
+  });
+  if (groups.length) h += '<div class="ctx-sep"></div>';
+  if (only !== '') h += '<div class="ctx-item" data-action="group-clear"><span class="ctx-icon">✕</span>グループ解除</div>';
+  h += '<div class="ctx-item" data-action="group-new"><span class="ctx-icon">＋</span>新規グループ作成…</div>';
+  m.innerHTML = h; positionCtx(m, ctxPos.x, ctxPos.y);
+}
+
+// Group manager modal
+let groupEditId = null, groupFormColor = GROUP_PALETTE[0], groupPendingTargets = null;
+function openGroupManager(targets) {
+  groupPendingTargets = targets && targets.length ? targets : null;
+  resetGroupForm(); renderGroupManager();
+  $('#modal-groups').classList.add('show');
+  if (groupPendingTargets) setTimeout(() => $('#group-name').focus(), 50);
+}
+function closeGroupManager() { groupPendingTargets = null; $('#modal-groups').classList.remove('show'); }
+function resetGroupForm() {
+  groupEditId = null; $('#group-name').value = '';
+  // Default to the first palette color this folder isn't using yet.
+  const used = new Set(getGroups().map(g => safeColor(g.color).toUpperCase()));
+  groupFormColor = GROUP_PALETTE.find(c => !used.has(c)) || GROUP_PALETTE[0];
+  $('#group-form-ok').textContent = groupPendingTargets ? `追加して${groupPendingTargets.length}件を振り分け` : '追加';
+  $('#group-form-cancel').style.display = 'none';
+  renderGroupPalette();
+}
+function renderGroupPalette() {
+  $('#group-palette').innerHTML = GROUP_PALETTE.map(c => `<button class="sw" data-color="${c}" style="background:${c}" title="${c}"></button>`).join('')
+    + `<input type="color" id="group-color-custom" title="任意の色">`;
+  markGroupPalette();
+}
+function markGroupPalette() {
+  document.querySelectorAll('#group-palette .sw').forEach(b => b.classList.toggle('on', b.dataset.color.toUpperCase() === groupFormColor.toUpperCase()));
+  $('#group-color-custom').value = groupFormColor.toLowerCase();
+}
+function renderGroupManager() {
+  const groups = getGroups(), list = $('#group-list');
+  if (!groups.length) { list.innerHTML = '<div class="empty">このフォルダにはまだグループがありません</div>'; return; }
+  // Count against the current listing so names left behind by deleted files don't inflate it.
+  const counts = {};
+  for (const e of App.entries) { const g = groupOf(e); if (g) counts[g.id] = (counts[g.id] || 0) + 1; }
+  list.innerHTML = groups.map((g, i) => `<div class="group-row${g.id === groupEditId ? ' editing' : ''}" data-id="${escHtml(g.id)}">
+    <span class="g-no">${i + 1}</span><span class="g-swatch" style="background:${safeColor(g.color)}"></span>
+    <span class="g-name" title="${escHtml(g.name)}">${escHtml(g.name)}</span><span class="g-count">${counts[g.id] || 0}件</span>
+    <button data-g="up" title="番号を上げる"${i === 0 ? ' disabled' : ''}>↑</button>
+    <button data-g="down" title="番号を下げる"${i === groups.length - 1 ? ' disabled' : ''}>↓</button>
+    <button data-g="edit" title="編集">✏</button>
+    <button data-g="del" title="削除">🗑</button></div>`).join('');
+}
+function submitGroupForm() {
+  const name = $('#group-name').value.trim();
+  if (!name) { toast('グループ名を入力してください'); return; }
+  if (getGroups().some(g => g.name === name && g.id !== groupEditId)) { toast(`「${name}」は既に存在します`); return; }
+  const d = folderGroupData(true);
+  if (groupEditId) {
+    const g = d.groups.find(x => x.id === groupEditId);
+    if (g) { g.name = name; g.color = groupFormColor; }
+  } else {
+    const id = genGroupId();
+    d.groups.push({ id, name, color: groupFormColor });
+    if (groupPendingTargets) { const t = groupPendingTargets; closeGroupManager(); assignGroup(t, id); return; }
+  }
+  saveGroups(); resetGroupForm(); renderGroupManager(); refreshGroupView();
+}
+function groupListAction(id, act) {
+  const d = folderGroupData(); if (!d) return;
+  const i = d.groups.findIndex(g => g.id === id); if (i < 0) return;
+  const g = d.groups[i];
+  if (act === 'up' || act === 'down') {
+    const j = act === 'up' ? i - 1 : i + 1;
+    if (j < 0 || j >= d.groups.length) return;
+    [d.groups[i], d.groups[j]] = [d.groups[j], d.groups[i]];
+  } else if (act === 'edit') {
+    groupEditId = id; $('#group-name').value = g.name; groupFormColor = safeColor(g.color);
+    $('#group-form-ok').textContent = '更新'; $('#group-form-cancel').style.display = '';
+    markGroupPalette(); renderGroupManager(); $('#group-name').focus();
+    return;
+  } else if (act === 'del') {
+    if (!confirm(`グループ「${g.name}」を削除しますか？\n振り分けも解除されます。`)) return;
+    d.groups.splice(i, 1);
+    for (const [n, gid] of Object.entries(d.files)) if (gid === id) delete d.files[n];
+    if (groupEditId === id) resetGroupForm();
+  } else return;
+  saveGroups(); renderGroupManager(); refreshGroupView();
 }
 
 // ── File Viewer (Image / Video / Audio / Text / PDF) ──
@@ -3184,6 +3409,15 @@ function setupEvents() {
   $('#btn-new-image').onclick = openNewImage;
   $('#btn-undo').onclick = undoLast;
   $('#btn-save-preset').onclick = saveAsNewPreset;
+  $('#btn-groups').onclick = () => openGroupManager();
+  $('#groups-close').onclick = closeGroupManager;
+  $('#group-form-ok').onclick = submitGroupForm;
+  $('#group-form-cancel').onclick = () => { resetGroupForm(); renderGroupManager(); };
+  $('#group-name').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) submitGroupForm(); if (e.key === 'Escape') closeGroupManager(); });
+  $('#group-palette').addEventListener('click', e => { const sw = e.target.closest('.sw'); if (sw) { groupFormColor = sw.dataset.color; markGroupPalette(); } });
+  // Only re-mark on input: re-rendering would destroy the open color picker.
+  $('#group-palette').addEventListener('input', e => { if (e.target.id === 'group-color-custom') { groupFormColor = e.target.value.toUpperCase(); markGroupPalette(); } });
+  $('#group-list').addEventListener('click', e => { const b = e.target.closest('button[data-g]'); if (b) groupListAction(b.closest('.group-row').dataset.id, b.dataset.g); });
 
   // New image (paint) modal
   $('#newimg-size').onchange = () => { $('#newimg-custom-row').style.display = $('#newimg-size').value === 'custom' ? 'flex' : 'none'; };
@@ -3217,7 +3451,7 @@ function setupEvents() {
     App.folderSortModes[customOrderKey()] = mode;
     saveSetting('folderSortModes', App.folderSortModes);
     // Standard modes update the global default; custom/preset are per-folder only
-    const isCustomLike = (mode === 'custom' || mode.startsWith('preset:'));
+    const isCustomLike = (mode === 'custom' || mode === 'group' || mode.startsWith('preset:'));
     if (!isCustomLike) { App.sortMode = mode; saveSetting('sortMode', App.sortMode); }
     // Load preset order into working buffer so further edits start from it
     if (mode.startsWith('preset:')) {
@@ -3228,9 +3462,13 @@ function setupEvents() {
         saveSetting('customOrders', App.customOrders);
       }
     }
-    // Re-sort
+    // Re-sort, keeping the same files selected (selection is index-based)
+    const sel = selectedEntries();
     App.entries = sortEntries(App.entries);
     App.entries = applyModeOrder(App.entries);
+    App.selected.clear();
+    for (const s of sel) { const i = App.entries.indexOf(s); if (i >= 0) App.selected.add(i); }
+    updateSelBadge();
     renderGrid(App.navGen);
   };
   $('#thumb-slider').oninput = e => { App.thumbSize = parseInt(e.target.value); document.documentElement.style.setProperty('--thumb-size', App.thumbSize); localStorage.setItem('dbxfiler_thumbSize', App.thumbSize); };
