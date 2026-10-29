@@ -689,6 +689,7 @@ const App = {
   customPresets: {},   // { path: [{id, name, order:[names]}] } — named saved custom-order presets
   folderSortModes: {}, // { path: mode } — per-folder sort mode ('custom' | 'preset:<id>' | 'group' | standard mode)
   folderGroups: {},    // { path: { groups:[{id,name,color}], files:{ name: groupId } } } — array order = group number
+  groupsUpdatedAt: {}, // { path: ts } — like foldersUpdatedAt but for folderGroups only, so group edits merge independently
   foldersUpdatedAt: {},// { path: ts } — last-edit timestamp per folder for cross-device merge (tombstone-aware)
   undoStack: [],  // [{type, label, ops:[{from,to}]}]
 };
@@ -1154,7 +1155,6 @@ function mergeSettings(local, cloud) {
     ...Object.keys(local.customOrders || {}), ...Object.keys(cloud.customOrders || {}),
     ...Object.keys(local.customPresets || {}), ...Object.keys(cloud.customPresets || {}),
     ...Object.keys(local.folderSortModes || {}), ...Object.keys(cloud.folderSortModes || {}),
-    ...Object.keys(local.folderGroups || {}), ...Object.keys(cloud.folderGroups || {}),
     ...Object.keys(lTs), ...Object.keys(cTs),
   ]);
   // Pick the authoritative side per folder, then copy that side's value for each map.
@@ -1168,7 +1168,7 @@ function mergeSettings(local, cloud) {
     }
     return [false, undefined];
   };
-  const customOrders = {}, customPresets = {}, folderSortModes = {}, folderGroups = {}, foldersUpdatedAt = {};
+  const customOrders = {}, customPresets = {}, folderSortModes = {}, foldersUpdatedAt = {};
   for (const p of allPaths) {
     const lt = lTs[p] || 0, ct = cTs[p] || 0;
     const side = lt > ct ? 'local' : (ct > lt ? 'cloud' : 'tie');
@@ -1176,8 +1176,23 @@ function mergeSettings(local, cloud) {
     if ((r = pick(local.customOrders, cloud.customOrders, p, side))[0]) customOrders[p] = r[1];
     if ((r = pick(local.customPresets, cloud.customPresets, p, side))[0]) customPresets[p] = r[1];
     if ((r = pick(local.folderSortModes, cloud.folderSortModes, p, side))[0]) folderSortModes[p] = r[1];
-    if ((r = pick(local.folderGroups, cloud.folderGroups, p, side))[0]) folderGroups[p] = r[1];
     if (lt || ct) foldersUpdatedAt[p] = Math.max(lt, ct);
+  }
+  // Groups get their own per-folder clock. Sharing foldersUpdatedAt let a sort
+  // change or reorder on a device that hadn't pulled the groups yet win the whole
+  // folder and wipe them.
+  const lGTs = local.groupsUpdatedAt || {}, cGTs = cloud.groupsUpdatedAt || {};
+  const groupPaths = new Set([
+    ...Object.keys(local.folderGroups || {}), ...Object.keys(cloud.folderGroups || {}),
+    ...Object.keys(lGTs), ...Object.keys(cGTs),
+  ]);
+  const folderGroups = {}, groupsUpdatedAt = {};
+  for (const p of groupPaths) {
+    const lt = lGTs[p] || 0, ct = cGTs[p] || 0;
+    const side = lt > ct ? 'local' : (ct > lt ? 'cloud' : 'tie');
+    const r = pick(local.folderGroups, cloud.folderGroups, p, side);
+    if (r[0]) folderGroups[p] = r[1];
+    if (lt || ct) groupsUpdatedAt[p] = Math.max(lt, ct);
   }
 
   return {
@@ -1186,7 +1201,8 @@ function mergeSettings(local, cloud) {
     favoritesUpdatedAt: Math.max(lFavTs, cFavTs),
     lastPath: cloud.lastPath ?? local.lastPath ?? '',
     sidebarHidden: cloud.sidebarHidden ?? local.sidebarHidden ?? false,
-    customOrders, customPresets, folderSortModes, folderGroups, foldersUpdatedAt,
+    customOrders, customPresets, folderSortModes, foldersUpdatedAt,
+    folderGroups, groupsUpdatedAt,
   };
 }
 
@@ -1207,6 +1223,7 @@ async function loadSettings() {
     customPresets: await IDB.get('settings','customPresets'),
     folderSortModes: await IDB.get('settings','folderSortModes'),
     folderGroups: await IDB.get('settings','folderGroups'),
+    groupsUpdatedAt: await IDB.get('settings','groupsUpdatedAt') || {},
     foldersUpdatedAt: await IDB.get('settings','foldersUpdatedAt') || {},
   };
 
@@ -1231,6 +1248,7 @@ async function loadSettings() {
   IDB.put('settings','customPresets', merged.customPresets);
   IDB.put('settings','folderSortModes', merged.folderSortModes);
   IDB.put('settings','folderGroups', merged.folderGroups);
+  IDB.put('settings','groupsUpdatedAt', merged.groupsUpdatedAt);
   IDB.put('settings','foldersUpdatedAt', merged.foldersUpdatedAt);
 
   return merged;
@@ -1258,6 +1276,7 @@ async function saveSettingsNow(data) {
         customPresets: App.customPresets || {},
         folderSortModes: App.folderSortModes || {},
         folderGroups: App.folderGroups || {},
+        groupsUpdatedAt: App.groupsUpdatedAt || {},
         foldersUpdatedAt: App.foldersUpdatedAt || {},
       };
       d = cloud ? mergeSettings(localState, cloud) : localState;
@@ -1274,6 +1293,7 @@ async function saveSettingsNow(data) {
       App.customPresets = d.customPresets;
       App.folderSortModes = d.folderSortModes;
       App.folderGroups = d.folderGroups;
+      App.groupsUpdatedAt = d.groupsUpdatedAt;
       App.foldersUpdatedAt = d.foldersUpdatedAt;
       IDB.put('settings','favorites', d.favorites);
       IDB.put('settings','favoritesUpdatedAt', d.favoritesUpdatedAt || 0);
@@ -1281,6 +1301,7 @@ async function saveSettingsNow(data) {
       IDB.put('settings','customPresets', d.customPresets);
       IDB.put('settings','folderSortModes', d.folderSortModes);
       IDB.put('settings','folderGroups', d.folderGroups);
+      IDB.put('settings','groupsUpdatedAt', d.groupsUpdatedAt);
       IDB.put('settings','foldersUpdatedAt', d.foldersUpdatedAt);
     }
     await App.storage.save(SETTINGS_PATH, JSON.stringify(d, null, 2));
@@ -1304,10 +1325,15 @@ function saveSetting(key, value) {
     IDB.put('settings', 'favoritesUpdatedAt', App.favoritesUpdatedAt);
   }
   // Stamp the edited folder so cross-device merges can do per-folder last-write-wins.
-  if (key === 'customOrders' || key === 'customPresets' || key === 'folderSortModes' || key === 'folderGroups') {
+  if (key === 'customOrders' || key === 'customPresets' || key === 'folderSortModes') {
     if (!App.foldersUpdatedAt) App.foldersUpdatedAt = {};
     App.foldersUpdatedAt[customOrderKey()] = Date.now();
     IDB.put('settings', 'foldersUpdatedAt', App.foldersUpdatedAt);
+  }
+  if (key === 'folderGroups') {
+    if (!App.groupsUpdatedAt) App.groupsUpdatedAt = {};
+    App.groupsUpdatedAt[customOrderKey()] = Date.now();
+    IDB.put('settings', 'groupsUpdatedAt', App.groupsUpdatedAt);
   }
   // Favorites, customOrders, customPresets, folderSortModes, folderGroups save immediately; others debounced
   if (key === 'favorites' || key === 'customOrders' || key === 'customPresets' || key === 'folderSortModes' || key === 'folderGroups') saveSettingsImmediate();
@@ -1325,6 +1351,7 @@ function applyLoadedSettings(s) {
   App.customPresets = s.customPresets || {};
   App.folderSortModes = s.folderSortModes || {};
   App.folderGroups = s.folderGroups || {};
+  App.groupsUpdatedAt = s.groupsUpdatedAt || {};
   App.foldersUpdatedAt = s.foldersUpdatedAt || {};
 }
 
@@ -1347,9 +1374,17 @@ async function resyncSettings() {
 // repaint, without re-listing the folder over the network.
 function reapplyCurrentOrder() {
   if (!App.entries || !App.entries.length) return;
-  App.entries = sortEntries(App.entries);
-  App.entries = applyModeOrder(App.entries);
+  resortEntries();
   renderGrid(App.navGen);
+}
+// Re-sort App.entries in place, keeping the same files selected (selection is
+// index-based, so it has to be re-pointed after the order changes).
+function resortEntries() {
+  const sel = selectedEntries();
+  App.entries = applyModeOrder(sortEntries(App.entries));
+  App.selected.clear();
+  for (const e of sel) { const i = App.entries.indexOf(e); if (i >= 0) App.selected.add(i); }
+  updateSelBadge();
 }
 
 // Pull settings from the cloud when the app returns to the foreground or the
@@ -1403,6 +1438,7 @@ async function init() {
   const localModes = await IDB.get('settings','folderSortModes');
   App.folderSortModes = localModes || {};
   App.folderGroups = await IDB.get('settings','folderGroups') || {};
+  App.groupsUpdatedAt = await IDB.get('settings','groupsUpdatedAt') || {};
   App.foldersUpdatedAt = await IDB.get('settings','foldersUpdatedAt') || {};
   // Backward compat: any saved custom order with no mode → assume 'custom'
   for (const k of Object.keys(App.customOrders)) {
@@ -1436,6 +1472,8 @@ async function init() {
   // Keep custom sort in sync after the initial load: re-pull cloud settings when
   // the app regains focus or the network returns.
   document.addEventListener('visibilitychange', autoResync);
+  // Two windows side by side never change visibility, so also resync on focus.
+  window.addEventListener('focus', autoResync);
   window.addEventListener('online', autoResync);
 }
 
@@ -1765,7 +1803,7 @@ async function doCtx(action) {
   const entry = ctxTarget, multi = ctxIsMulti; hideCtx();
   // Deferred: this runs inside the menu's click, and swapping the menu's DOM now
   // would detach the click target so the document handler closes the new menu.
-  if (action === 'group-menu') { const t = multi ? selectedFileEntries() : [entry]; setTimeout(() => showCtxGroups(t), 0); }
+  if (action === 'group-menu') { const t = multi ? selectedFileEntries() : [entry]; setTimeout(async () => { await freshenGroups(); showCtxGroups(t); }, 0); }
   else if (action.startsWith('group-set:')) assignGroup(groupTargets, action.slice(10));
   else if (action === 'group-clear') assignGroup(groupTargets, null);
   else if (action === 'group-new') openGroupManager(groupTargets);
@@ -3181,12 +3219,14 @@ function saveGroups() {
 // Repaint after a group change, re-sorting when the folder is in group order and
 // keeping the same files selected across the re-sort.
 function refreshGroupView() {
-  const sel = selectedEntries();
-  if (getEffectiveSortMode() === 'group') App.entries = sortEntries(App.entries);
-  App.selected.clear();
-  for (const e of sel) { const i = App.entries.indexOf(e); if (i >= 0) App.selected.add(i); }
-  updateSelBadge();
+  if (getEffectiveSortMode() === 'group') resortEntries();
   renderGrid(App.navGen);
+}
+// Pull the cloud copy before a group edit so this device edits the latest
+// groups instead of overwriting another device's with a stale copy.
+async function freshenGroups() {
+  if (Date.now() - lastResyncAt < 3000) return;
+  try { if (await resyncSettings()) reapplyCurrentOrder(); } catch (_) {}
 }
 function assignGroup(entries, id) {
   const files = entries.filter(e => e && e['.tag'] === 'file');
@@ -3218,7 +3258,8 @@ function showCtxGroups(targets) {
 
 // Group manager modal
 let groupEditId = null, groupFormColor = GROUP_PALETTE[0], groupPendingTargets = null;
-function openGroupManager(targets) {
+async function openGroupManager(targets) {
+  await freshenGroups();
   groupPendingTargets = targets && targets.length ? targets : null;
   resetGroupForm(); renderGroupManager();
   $('#modal-groups').classList.add('show');
@@ -3462,13 +3503,7 @@ function setupEvents() {
         saveSetting('customOrders', App.customOrders);
       }
     }
-    // Re-sort, keeping the same files selected (selection is index-based)
-    const sel = selectedEntries();
-    App.entries = sortEntries(App.entries);
-    App.entries = applyModeOrder(App.entries);
-    App.selected.clear();
-    for (const s of sel) { const i = App.entries.indexOf(s); if (i >= 0) App.selected.add(i); }
-    updateSelBadge();
+    resortEntries();
     renderGrid(App.navGen);
   };
   $('#thumb-slider').oninput = e => { App.thumbSize = parseInt(e.target.value); document.documentElement.style.setProperty('--thumb-size', App.thumbSize); localStorage.setItem('dbxfiler_thumbSize', App.thumbSize); };
