@@ -338,10 +338,16 @@ body {
 #viewer-bottombar.visible { opacity: 1; pointer-events: auto; }
 #viewer-slider { flex: 1; height: 3px; accent-color: var(--accent); cursor: pointer; }
 #viewer-page-label { font-size: 12px; color: rgba(255,255,255,0.7); min-width: 60px; text-align: right; }
+.viewer-btn:disabled { opacity: 0.3; cursor: default; }
+/* Non-image pages keep both bars in the layout instead of floating over the
+   content: overlaid bars collide with the native video controls on Android,
+   and once auto-hidden there is no touch gesture to bring them back. */
+#viewer.mode-media #viewer-topbar, #viewer.mode-media #viewer-bottombar { position: static; opacity: 1; pointer-events: auto; }
+#viewer-video-wrap, #viewer-audio-wrap, #viewer-text-wrap, #viewer-pdf-wrap { min-height: 0; }
 
 /* ── Video/Audio/Text/PDF Viewer ──────────────────────── */
 #viewer-video { width: 100%; height: 100%; object-fit: contain; outline: none; background: #000; }
-#viewer-audio-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 40px; }
+#viewer-audio-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 40px; }
 #viewer-audio-icon { font-size: 80px; opacity: 0.7; }
 #viewer-audio-name { font-size: 15px; color: #fff; text-align: center; word-break: break-all; max-width: 80%; }
 #viewer-audio { width: min(400px, 80vw); }
@@ -560,11 +566,11 @@ body {
 <div id="viewer">
   <div id="viewer-topbar"><span id="viewer-title"></span><button class="viewer-btn" id="viewer-edit" title="ペイントで編集" style="display:none">🎨</button><button class="viewer-btn" id="viewer-loop" title="リピート" style="display:none">🔁</button><button class="viewer-btn" id="viewer-close" title="閉じる">✕</button></div>
   <div id="viewer-img-wrap"><div class="tap-zone left" id="tap-left"></div><div class="tap-zone center" id="tap-center"></div><div class="tap-zone right" id="tap-right"></div><img id="viewer-img" src="" alt="" draggable="false"></div>
-  <div id="viewer-video-wrap" style="display:none;flex:1;align-items:center;justify-content:center;overflow:hidden"><video id="viewer-video" controls></video></div>
+  <div id="viewer-video-wrap" style="display:none;flex:1;align-items:center;justify-content:center;overflow:hidden"><video id="viewer-video" controls playsinline></video></div>
   <div id="viewer-audio-wrap" style="display:none"><span id="viewer-audio-icon">🎵</span><span id="viewer-audio-name"></span><audio id="viewer-audio" controls></audio></div>
   <div id="viewer-text-wrap" style="display:none"><pre id="viewer-text"></pre></div>
   <div id="viewer-pdf-wrap" style="display:none"><iframe id="viewer-pdf"></iframe></div>
-  <div id="viewer-bottombar"><input type="range" id="viewer-slider" min="0" max="0" value="0"><span id="viewer-page-label"></span></div>
+  <div id="viewer-bottombar"><button class="viewer-btn" id="viewer-prev" title="前へ">‹</button><input type="range" id="viewer-slider" min="0" max="0" value="0"><button class="viewer-btn" id="viewer-next" title="次へ">›</button><span id="viewer-page-label"></span></div>
 </div>
 
 <div id="paint">
@@ -3339,7 +3345,6 @@ function groupListAction(id, act) {
 function hideAllViewerPanes() {
   $('#viewer-img-wrap').style.display = '';
   $('#viewer-img').removeAttribute('src'); $('#viewer-img').classList.add('loading');
-  $('#viewer-bottombar').classList.remove('visible');
   $('#viewer-video-wrap').style.display = 'none';
   const vid = $('#viewer-video'); vid.pause(); vid.removeAttribute('src'); vid.load();
   $('#viewer-audio-wrap').style.display = 'none';
@@ -3374,6 +3379,8 @@ async function loadViewerPage(idx) {
   $('#viewer-loop').style.display = (cat === 'video' || cat === 'audio') ? '' : 'none';
   $('#viewer-edit').style.display = (cat === 'image' && IMG_EXT.has(ext(entry.name))) ? '' : 'none';
   hideAllViewerPanes();
+  $('#viewer').classList.toggle('mode-media', cat !== 'image');
+  if (cat !== 'image' || viewerBarVisible()) showViewerBar();
 
   try {
     if (cat === 'image') {
@@ -3414,10 +3421,11 @@ async function loadViewerPage(idx) {
 async function prefetchV(cur) { for (const off of [1,-1,2,-2,3,-3]) { const i = cur+off; if (i<0||i>=App.viewerImages.length) continue; const e = App.viewerImages[i]; if (fileCategory(e.name) !== 'image') continue; const rel = entryRelPath(e); if (App.prefetchCache[rel]) continue; try { const buf = await App.storage.loadBinary(rel); const mime = fileMime(e.name); App.prefetchCache[rel] = URL.createObjectURL(new Blob([buf], { type: mime })); } catch(_) {} } }
 function vPrev() { if (App.viewerIndex > 0) loadViewerPage(App.viewerIndex - 1); }
 function vNext() { if (App.viewerIndex < App.viewerImages.length - 1) loadViewerPage(App.viewerIndex + 1); }
-function updateVSlider() { const s = $('#viewer-slider'); s.max = App.viewerImages.length-1; s.value = App.viewerIndex; $('#viewer-page-label').textContent = `${App.viewerIndex+1} / ${App.viewerImages.length}`; }
+function updateVSlider() { const s = $('#viewer-slider'); s.max = App.viewerImages.length-1; s.value = App.viewerIndex; $('#viewer-page-label').textContent = `${App.viewerIndex+1} / ${App.viewerImages.length}`; $('#viewer-prev').disabled = App.viewerIndex <= 0; $('#viewer-next').disabled = App.viewerIndex >= App.viewerImages.length - 1; }
 function viewerBarVisible() { return $('#viewer-topbar').classList.contains('visible'); }
 function hideViewerBar() { clearTimeout(App.toolbarTimer); $('#viewer-topbar').classList.remove('visible'); $('#viewer-bottombar').classList.remove('visible'); }
-function showViewerBar() { const isImg = App.viewerImages[App.viewerIndex] && fileCategory(App.viewerImages[App.viewerIndex].name) === 'image'; $('#viewer-topbar').classList.add('visible'); if (isImg) $('#viewer-bottombar').classList.add('visible'); else $('#viewer-bottombar').classList.remove('visible'); clearTimeout(App.toolbarTimer); App.toolbarTimer = setTimeout(() => { if (App.viewerVisible) hideViewerBar(); }, 3000); }
+// Only image pages auto-hide the bars; elsewhere they stay put (see .mode-media).
+function showViewerBar() { const isImg = App.viewerImages[App.viewerIndex] && fileCategory(App.viewerImages[App.viewerIndex].name) === 'image'; $('#viewer-topbar').classList.add('visible'); $('#viewer-bottombar').classList.add('visible'); clearTimeout(App.toolbarTimer); if (isImg) App.toolbarTimer = setTimeout(() => { if (App.viewerVisible) hideViewerBar(); }, 3000); }
 
 // ════════════════════════════════════════
 // Events
@@ -3829,11 +3837,9 @@ function setupEvents() {
   });
 
   $('#tap-left').onclick = vPrev; $('#tap-right').onclick = vNext;
-  // Center tap toggles the bars, so they can be dismissed without waiting out
-  // the auto-hide timer. Remember where the dismissing tap landed: the pointer
-  // sits there afterwards, and a stray move would otherwise bring them back.
-  let barHidePt = null;
-  $('#tap-center').onclick = e => { if (viewerBarVisible()) { hideViewerBar(); barHidePt = { x: e.clientX, y: e.clientY }; } else { barHidePt = null; showViewerBar(); } };
+  $('#viewer-prev').onclick = vPrev; $('#viewer-next').onclick = vNext;
+  // Center tap/click is the only way to toggle the bars, on touch and mouse alike.
+  $('#tap-center').onclick = () => { if (viewerBarVisible()) hideViewerBar(); else showViewerBar(); };
   $('#viewer-slider').oninput = e => loadViewerPage(parseInt(e.target.value));
 
   // Keyboard
@@ -3845,7 +3851,7 @@ function setupEvents() {
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); paintRedo(); }
       return;
     }
-    if (App.viewerVisible) { if (e.key==='Escape') { closeViewer(); history.back(); } else if (e.key==='ArrowLeft') vPrev(); else if (e.key==='ArrowRight') vNext(); return; }
+    if (App.viewerVisible) { if (e.key==='Escape') { closeViewer(); history.back(); } else if (e.key==='ArrowLeft') { e.preventDefault(); vPrev(); } else if (e.key==='ArrowRight') { e.preventDefault(); vNext(); } return; }
     if (e.key==='Backspace') { e.preventDefault(); if (App.currentPath) navigate(parentPath(App.currentPath)); }
     if (e.key==='a' && (e.ctrlKey||e.metaKey)) { e.preventDefault(); selectAll(); }
     if (e.key==='Escape') clearSelection();
@@ -3860,7 +3866,6 @@ function setupEvents() {
   imgWrap.addEventListener('touchend', e => { if (!swiping) return; swiping = false; const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 50) dx > 0 ? vPrev() : vNext(); });
   imgWrap.addEventListener('touchcancel', () => { swiping = false; });
   imgWrap.addEventListener('contextmenu', e => e.preventDefault());
-  $('#viewer').addEventListener('pointermove', e => { if (!App.viewerVisible || e.pointerType !== 'mouse') return; if (barHidePt && Math.hypot(e.clientX - barHidePt.x, e.clientY - barHidePt.y) < 16) return; barHidePt = null; showViewerBar(); });
   let wCD = false;
   $('#viewer').addEventListener('wheel', e => { if (!App.viewerVisible||wCD) return; e.preventDefault(); wCD=true; setTimeout(()=>wCD=false,200); e.deltaY>0 ? vNext() : vPrev(); }, { passive: false });
 
