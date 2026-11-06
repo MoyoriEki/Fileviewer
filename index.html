@@ -1212,12 +1212,58 @@ function mergeSettings(local, cloud) {
   };
 }
 
+// Key-order-independent JSON, to tell whether a merge changed anything.
+const stableJSON = v => JSON.stringify(v, (_, x) => (x && typeof x === 'object' && !Array.isArray(x))
+  ? Object.keys(x).sort().reduce((o, k) => (o[k] = x[k], o), {}) : x);
+
+// Read the cloud settings file with its rev. Throws on network/auth errors so a
+// failed read is never mistaken for "no settings yet" (which used to push this
+// device's local copy over everything other devices had saved).
+async function readCloudSettings() {
+  const sb = App.storage;
+  const notFound = e => /not_found/.test(e?.message || '');
+  if (typeof sb._contentDownload !== 'function' || typeof sb._resolve !== 'function') {
+    let raw;
+    try { raw = await sb.load(SETTINGS_PATH); } catch (e) { if (notFound(e)) return { data: null, rev: null, exists: false }; throw e; }
+    let data = null; try { data = JSON.parse(raw); } catch (_) {}
+    return { data, rev: null, exists: true };
+  }
+  let r;
+  try { r = await sb._contentDownload(sb._resolve(SETTINGS_PATH)); }
+  catch (e) { if (notFound(e)) return { data: null, rev: null, exists: false }; throw e; }
+  let rev = null;
+  try { rev = JSON.parse(r.headers.get('Dropbox-API-Result') || '{}').rev || null; } catch (_) {}
+  let data = null; try { data = JSON.parse(await r.text()); } catch (_) {}
+  return { data, rev, exists: true };
+}
+
+// Upload only if the file is still the rev we merged against. Returns false on a
+// conflict (another device saved in between) so the caller re-reads and merges
+// again instead of overwriting that device's change.
+async function writeCloudSettings(json, rev, exists) {
+  const sb = App.storage;
+  if (typeof sb._resolve !== 'function' || !sb._tm || (exists && !rev)) { await sb.save(SETTINGS_PATH, json); return true; }
+  const mode = exists ? { '.tag': 'update', update: rev } : { '.tag': 'add' };
+  const doReq = () => fetch('https://content.dropboxapi.com/2/files/upload', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + sb.getToken(),
+      'Content-Type': 'application/octet-stream',
+      'Dropbox-API-Arg': dbxArg({ path: sb._resolve(SETTINGS_PATH), mode, autorename: false }),
+    },
+    body: json,
+  });
+  let r = await doReq();
+  if (await sb._tm.isExpired(r)) { await sb._handleExpiry(); r = await doReq(); }
+  if (r.ok) return true;
+  const t = await r.text();
+  if (r.status === 409 && /conflict/.test(t)) return false;
+  throw new Error(t);
+}
+
 async function loadSettings() {
-  let cloud = null;
-  try {
-    const raw = await App.storage.load(SETTINGS_PATH);
-    cloud = JSON.parse(raw);
-  } catch(_) {}
+  let cloud = null, cloudOk = true;
+  try { cloud = (await readCloudSettings()).data; } catch (_) { cloudOk = false; }
 
   const local = {
     sortMode: await IDB.get('settings','sortMode'),
@@ -1233,11 +1279,14 @@ async function loadSettings() {
     foldersUpdatedAt: await IDB.get('settings','foldersUpdatedAt') || {},
   };
 
-  // Merge local + cloud with per-folder last-write-wins, then push the merged
-  // union back to the cloud so neither side loses data. Always pushing keeps the
-  // cloud as the union even when this device made changes while offline.
+  // Merge local + cloud with per-folder last-write-wins, then push the union
+  // back when this device has something the cloud lacks. Skipping the no-op
+  // upload matters: every focus on every device used to re-upload, and an upload
+  // racing another device's save could undo it. Never push when the read failed.
   const merged = mergeSettings(local, cloud);
-  saveSettingsNow(merged);
+  if (cloudOk && (!cloud || stableJSON(merged) !== stableJSON(mergeSettings(cloud, cloud)))) {
+    saveSettingsNow(JSON.parse(JSON.stringify(merged)));
+  }
 
   // Backward compat: any saved custom order with no mode → assume 'custom'
   for (const k of Object.keys(merged.customOrders || {})) {
@@ -1260,18 +1309,35 @@ async function loadSettings() {
   return merged;
 }
 
-async function saveSettingsNow(data) {
-  try {
-    let d = data;
-    if (!d) {
-      // Read-modify-write: re-fetch the cloud copy and merge our in-memory state
-      // into it so a save here can't clobber changes another device made to a
-      // different folder (or newer favorites) since we last loaded.
-      let cloud = null;
-      try { cloud = JSON.parse(await App.storage.load(SETTINGS_PATH)); } catch(_) {}
-      // Snapshot App AFTER the load: any synchronous saveSetting calls that
-      // triggered overlapping saves have all applied to App by now, so every
-      // racing save writes the same complete state instead of a partial one.
+// One read-merge-write at a time. Overlapping saves used to finish in any
+// order, so an older snapshot could land last and roll the cloud back.
+// Back-to-back saves of the in-memory state collapse into one queued run.
+let saveChain = Promise.resolve(), stateSaveQueued = false, saveRetryTimer = null;
+function saveSettingsNow(data) {
+  if (!data) { if (stateSaveQueued) return saveChain; stateSaveQueued = true; }
+  saveChain = saveChain
+    .then(() => { if (!data) stateSaveQueued = false; return pushSettings(data); })
+    .catch(e => {
+      console.warn('Settings sync failed:', e);
+      // Offline is covered by the 'online' resync; otherwise retry once later.
+      clearTimeout(saveRetryTimer);
+      if (navigator.onLine !== false) saveRetryTimer = setTimeout(() => saveSettingsNow(), 15000);
+    });
+  return saveChain;
+}
+
+async function pushSettings(data) {
+  if (!App.storage || !App.storage.isConnected) return;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    // Read-modify-write against the latest cloud copy so a save here can't
+    // clobber changes another device made since we last loaded.
+    const { data: cloud, rev, exists } = await readCloudSettings();
+    let d;
+    if (data) {
+      d = cloud ? mergeSettings(data, cloud) : data;
+    } else {
+      // Snapshot App AFTER the load so the snapshot includes every change made
+      // while the read was in flight.
       const localState = {
         sortMode: App.sortMode,
         favorites: App.favorites,
@@ -1293,6 +1359,9 @@ async function saveSettingsNow(data) {
       d.sidebarHidden = localState.sidebarHidden;
       // Reflect the merged result locally so App/IDB stay in sync with the cloud
       // and the next save merges against an up-to-date base.
+      const k = customOrderKey();
+      const viewOf = () => stableJSON([App.folderSortModes?.[k], App.customOrders?.[k], App.customPresets?.[k], App.folderGroups?.[k]]);
+      const viewBefore = viewOf();
       App.favorites = d.favorites;
       App.favoritesUpdatedAt = d.favoritesUpdatedAt || 0;
       App.customOrders = d.customOrders;
@@ -1309,9 +1378,14 @@ async function saveSettingsNow(data) {
       IDB.put('settings','folderGroups', d.folderGroups);
       IDB.put('settings','groupsUpdatedAt', d.groupsUpdatedAt);
       IDB.put('settings','foldersUpdatedAt', d.foldersUpdatedAt);
+      // The cloud brought in another device's change to the open folder.
+      if (viewOf() !== viewBefore) { updateSortSelectUI(); reapplyCurrentOrder(); }
     }
-    await App.storage.save(SETTINGS_PATH, JSON.stringify(d, null, 2));
-  } catch(e) { console.warn('Settings sync failed:', e); }
+    if (cloud && stableJSON(d) === stableJSON(mergeSettings(cloud, cloud))) return; // cloud already has it
+    if (await writeCloudSettings(JSON.stringify(d, null, 2), rev, exists)) return;
+    // Conflict: another device saved between our read and write → merge again.
+  }
+  throw new Error('settings save kept conflicting');
 }
 
 function saveSettings() {
@@ -1365,15 +1439,20 @@ function applyLoadedSettings(s) {
 // file grid. Returns false when not connected. Used by the refresh button and
 // the on-focus/online auto re-sync so the custom sort order stays in sync after
 // the initial load (loadSettings otherwise only runs at startup/connect).
-let lastResyncAt = 0;
-async function resyncSettings() {
-  if (!App.storage || !App.storage.isConnected) return false;
-  const s = await loadSettings();
-  applyLoadedSettings(s);
-  lastResyncAt = Date.now();
-  renderFavorites();
-  updateSortSelectUI();
-  return true;
+let lastResyncAt = 0, resyncInFlight = null;
+function resyncSettings() {
+  if (!App.storage || !App.storage.isConnected) return Promise.resolve(false);
+  // Focus + navigation can fire together; share one pull instead of racing two.
+  if (resyncInFlight) return resyncInFlight;
+  resyncInFlight = (async () => {
+    const s = await loadSettings();
+    applyLoadedSettings(s);
+    lastResyncAt = Date.now();
+    renderFavorites();
+    updateSortSelectUI();
+    return true;
+  })().finally(() => { resyncInFlight = null; });
+  return resyncInFlight;
 }
 
 // Re-apply the current sort mode/custom order to the already-loaded entries and
@@ -1400,7 +1479,7 @@ async function autoResync() {
   if (document.visibilityState !== 'visible') return;
   if (!App.storage || !App.storage.isConnected) return;
   if (Date.now() - lastResyncAt < 3000) return;
-  if (await resyncSettings()) reapplyCurrentOrder();
+  try { if (await resyncSettings()) reapplyCurrentOrder(); } catch (e) { console.warn('Settings resync failed:', e); }
 }
 
 // ════════════════════════════════════════
@@ -1409,7 +1488,7 @@ async function autoResync() {
 // Bumped by hand on each change so the sidebar shows which build is actually
 // running — handy for confirming a deploy reached the device. The SW cache id
 // (filer-<sha>) appended next to it changes automatically on every deploy.
-const APP_VERSION = 'v2026.06.21-1';
+const APP_VERSION = 'v2026.11.06-1';
 async function showAppVersion() {
   const el = $('#app-version'); if (!el) return;
   el.textContent = APP_VERSION;
@@ -1496,11 +1575,17 @@ async function navigate(path, replace) {
   replace ? replaceHash(path) : pushHash(path);
   $('#btn-up').classList.toggle('disabled', !path);
   renderBreadcrumb(); renderFavorites(); updateTreeActive(); updateSortSelectUI();
+  // Pick up sort changes another device made to this folder (throttled; the
+  // order is re-applied when it lands, whether before or after the listing).
+  autoResync();
   await loadFolder(path);
 }
 
 async function loadFolder(path) {
   const gen = ++App.navGen; const grid = $('#grid'); const ld = $('#loading-overlay');
+  // Drop the previous folder's entries so a resync landing mid-load doesn't
+  // re-sort and repaint them under the new folder's settings.
+  App.entries = [];
   grid.innerHTML = ''; ld.classList.add('active');
   try {
     const entries = await App.storage.list(path || '');
@@ -1513,6 +1598,17 @@ async function loadFolder(path) {
   finally { if (gen === App.navGen) ld.classList.remove('active'); }
 }
 
+const STANDARD_SORTS = ['name_asc','name_desc','date_desc','date_asc','size_desc','size_asc'];
+// The comparator for this folder. A standard mode picked in this folder is stored
+// per folder (and synced), so it has to win over the global default; using
+// App.sortMode here made the list follow whichever folder/device changed the
+// sort last while the dropdown still showed this folder's mode. Custom/preset/
+// group folders fall back to the global default for files the saved order lacks.
+function baseSortMode() {
+  const m = getEffectiveSortMode();
+  if (STANDARD_SORTS.includes(m)) return m;
+  return STANDARD_SORTS.includes(App.sortMode) ? App.sortMode : 'name_asc';
+}
 function sortEntries(entries) {
   const folders = entries.filter(e => e['.tag'] === 'folder');
   const files = entries.filter(e => e['.tag'] === 'file');
@@ -1523,7 +1619,7 @@ function sortEntries(entries) {
     folders.sort((a, b) => naturalCmp(a.name, b.name));
     return [...folders, ...files];
   }
-  const cmp = (a, b) => { switch (App.sortMode) {
+  const cmp = (a, b) => { switch (baseSortMode()) {
     case 'name_asc': return naturalCmp(a.name, b.name);
     case 'name_desc': return naturalCmp(b.name, a.name);
     case 'date_desc': return (b.client_modified||'').localeCompare(a.client_modified||'');
